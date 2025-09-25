@@ -79,6 +79,13 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
             }
         }
     }
+
+    pub fn as_owned(self) -> Option<MleGroupOwned<EF>> {
+        match self {
+            Self::Owned(owned) => Some(owned),
+            Self::Ref(_) => None,
+        }
+    }
 }
 
 impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
