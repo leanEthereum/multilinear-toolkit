@@ -1,0 +1,18 @@
+[package]
+name = "multilinear-toolkit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git" }
+p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-air = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+rayon = "*"
+rand = "*"
+itertools = "*"
+tracing = "*"
+
+[dev-dependencies]
+p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
