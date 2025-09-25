@@ -70,6 +70,15 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
             Self::Ref(r) => r.n_columns(),
         }
     }
+
+    pub fn fold_in_large_field_in_place(&mut self, scalars: &[EF]) {
+        match self {
+            Self::Owned(owned) => owned.fold_in_large_field_in_place(scalars),
+            Self::Ref(_) => {
+                *self = self.by_ref().fold_in_large_field(scalars).into();
+            }
+        }
+    }
 }
 
 impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
@@ -103,6 +112,26 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
             Self::Extension(v) => v.len(),
             Self::BasePacked(v) => v.len(),
             Self::ExtensionPacked(v) => v.len(),
+        }
+    }
+
+    pub fn fold_in_large_field_in_place(&mut self, scalars: &[EF]) {
+        match self {
+            Self::Base(_) | Self::BasePacked(_) => {
+                *self = self.by_ref().fold_in_large_field(scalars);
+            }
+            Self::Extension(pols) => {
+                batch_fold_multilinear_in_large_field_in_place(
+                    &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
+                    scalars,
+                );
+            }
+            Self::ExtensionPacked(pols) => {
+                batch_fold_multilinear_in_large_field_in_place(
+                    &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
+                    scalars,
+                );
+            }
         }
     }
 }

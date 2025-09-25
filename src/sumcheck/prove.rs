@@ -7,6 +7,53 @@ use crate::*;
 
 #[allow(clippy::too_many_arguments)]
 pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+    skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
+    multilinears: M,
+    computation: &SC,
+    computation_packed: &SCP,
+    batching_scalars: &[EF],
+    eq_factor: Option<(Vec<EF>, Option<Mle<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    is_zerofier: bool,
+    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    sum: EF,
+    missing_mul_factors: Option<EF>,
+) -> (MultilinearPoint<EF>, Vec<EF>, EF)
+where
+    EF: ExtensionField<PF<EF>>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
+    SCP: SumcheckComputationPacked<EF>,
+{
+    let multilinears: MleGroup<'a, EF> = multilinears.into();
+    let n_rounds = multilinears.by_ref().n_vars() - skip + 1;
+    let (challenges, final_folds, final_sum) = sumcheck_prove_many_rounds(
+        skip,
+        multilinears,
+        computation,
+        computation_packed,
+        batching_scalars,
+        eq_factor,
+        is_zerofier,
+        prover_state,
+        sum,
+        missing_mul_factors,
+        n_rounds,
+    );
+
+    let final_folds = final_folds
+        .by_ref()
+        .as_extension()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            assert_eq!(m.len(), 1);
+            m[0]
+        })
+        .collect::<Vec<_>>();
+
+    (challenges, final_folds, final_sum)
+}
+#[allow(clippy::too_many_arguments)]
+pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears: M,
     computation: &SC,
@@ -17,7 +64,8 @@ pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     mut sum: EF,
     mut missing_mul_factors: Option<EF>,
-) -> (MultilinearPoint<EF>, Vec<EF>, EF)
+    n_rounds: usize,
+) -> (MultilinearPoint<EF>, MleGroup<'a, EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
@@ -41,8 +89,6 @@ where
         assert_eq!(eq_mle.n_vars(), eq_point.len() - 1);
         assert_eq!(eq_mle.is_packed(), multilinears.by_ref().is_packed());
     }
-
-    let n_rounds = n_vars - skip + 1;
 
     let mut challenges = Vec::new();
     for _ in 0..n_rounds {
@@ -84,18 +130,7 @@ where
         is_zerofier = false;
     }
 
-    let final_folds = multilinears
-        .by_ref()
-        .as_extension()
-        .unwrap()
-        .iter()
-        .map(|m| {
-            assert_eq!(m.len(), 1);
-            m[0]
-        })
-        .collect::<Vec<_>>();
-
-    (MultilinearPoint(challenges), final_folds, sum)
+    (MultilinearPoint(challenges), multilinears, sum)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -232,8 +267,5 @@ fn on_challenge_received<'a, EF>(
         eq_mle.truncate(eq_mle.packed_len() / 2);
     }
 
-    *multilinears = multilinears
-        .by_ref()
-        .fold_in_large_field(&folding_scalars)
-        .into()
+    multilinears.fold_in_large_field_in_place(&folding_scalars);
 }

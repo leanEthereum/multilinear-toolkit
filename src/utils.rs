@@ -48,6 +48,18 @@ pub fn batch_fold_multilinear_in_large_field_packed<EF: ExtensionField<PF<EF>>>(
         .collect()
 }
 
+pub fn batch_fold_multilinear_in_large_field_in_place<
+    F: Field,
+    NF: Algebra<F> + Sync + Send + Copy,
+>(
+    polys: &mut [&mut [NF]],
+    scalars: &[F],
+) {
+    polys
+        .par_iter_mut()
+        .for_each(|poly| fold_multilinear_in_place(poly, scalars));
+}
+
 pub fn fold_multilinear_in_large_field<F: Field, EF: ExtensionField<F>>(
     m: &[F],
     scalars: &[EF],
@@ -64,6 +76,25 @@ pub fn fold_multilinear_in_large_field<F: Field, EF: ExtensionField<F>>(
                 .sum()
         })
         .collect()
+}
+
+pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
+    m: &mut [NF],
+    scalars: &[F],
+) {
+    assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
+    let new_size = m.len() / scalars.len();
+    (0..new_size).into_par_iter().for_each(|i| {
+        let s = scalars
+            .iter()
+            .enumerate()
+            .map(|(j, s)| m[i + j * new_size] * *s)
+            .sum::<NF>();
+        unsafe {
+            let ptr = m.as_ptr().add(i) as *mut NF;
+            *ptr = s;
+        }
+    });
 }
 
 pub fn fold_extension_packed<EF: ExtensionField<PF<EF>>>(
