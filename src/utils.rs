@@ -52,7 +52,7 @@ pub fn batch_fold_multilinear_in_large_field_in_place<
     F: Field,
     NF: Algebra<F> + Sync + Send + Copy,
 >(
-    polys: &mut [&mut [NF]],
+    polys: &mut [&mut Vec<NF>],
     scalars: &[F],
 ) {
     polys
@@ -79,7 +79,7 @@ pub fn fold_multilinear_in_large_field<F: Field, EF: ExtensionField<F>>(
 }
 
 pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
-    m: &mut [NF],
+    m: &mut Vec<NF>,
     scalars: &[F],
 ) {
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
@@ -95,6 +95,7 @@ pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
             *ptr = s;
         }
     });
+    m.truncate(new_size);
 }
 
 pub fn fold_extension_packed<EF: ExtensionField<PF<EF>>>(
