@@ -498,7 +498,7 @@ where
     pub fold_size: usize,
 }
 
-pub fn sumcheck_compute_not_packed<
+fn sumcheck_compute_not_packed<
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>>,
     SC,

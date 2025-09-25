@@ -2,7 +2,7 @@ use crate::*;
 use fiat_shamir::*;
 use p3_field::*;
 
-pub fn verify<EF>(
+pub fn sumcheck_verify<EF>(
     verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
     n_vars: usize,
     degree: usize,
@@ -15,7 +15,7 @@ where
     verify_core(verifier_state, max_degree_per_vars, sumation_sets)
 }
 
-pub fn verify_with_custom_degree_at_first_round<EF>(
+pub fn sumcheck_verify_with_custom_degree_at_first_round<EF>(
     verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
     n_vars: usize,
     intial_degree: usize,
@@ -30,7 +30,7 @@ where
     verify_core(verifier_state, max_degree_per_vars, sumation_sets)
 }
 
-pub fn verify_with_univariate_skip<EF>(
+pub fn sumcheck_verify_with_univariate_skip<EF>(
     verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
     degree: usize,
     n_vars: usize,

@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use crate::*;
 
 #[allow(clippy::too_many_arguments)]
-pub fn prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears: M,
     computation: &SC,
@@ -15,7 +15,7 @@ pub fn prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut eq_factor: Option<(Vec<EF>, Option<Mle<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     mut is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    mut sums: EF,
+    mut sum: EF,
     mut missing_mul_factors: Option<EF>,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
@@ -64,7 +64,7 @@ where
             batching_scalars,
             is_zerofier,
             prover_state,
-            sums,
+            sum,
             missing_mul_factors,
         );
         let challenge = prover_state.sample();
@@ -75,7 +75,7 @@ where
             &mut multilinears,
             &mut n_vars,
             &mut eq_factor,
-            &mut sums,
+            &mut sum,
             &mut missing_mul_factors,
             challenge,
             &ps,
@@ -95,7 +95,7 @@ where
         })
         .collect::<Vec<_>>();
 
-    (MultilinearPoint(challenges), final_folds, sums)
+    (MultilinearPoint(challenges), final_folds, sum)
 }
 
 #[allow(clippy::too_many_arguments)]
