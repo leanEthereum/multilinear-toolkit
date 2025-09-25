@@ -89,6 +89,13 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
 }
 
 impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
+    pub fn as_extension_mut(&mut self) -> Option<&mut Vec<Vec<EF>>> {
+        match self {
+            Self::Extension(e) => Some(e),
+            _ => None,
+        }
+    }
+
     pub fn by_ref<'a>(&'a self) -> MleGroupRef<'a, EF> {
         match self {
             Self::Base(base) => MleGroupRef::Base(base.iter().map(|v| v.as_slice()).collect()),
@@ -141,6 +148,7 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
             }
         }
     }
+
 }
 
 impl<EF: ExtensionField<PF<EF>>> Mle<EF> {
