@@ -1107,27 +1107,6 @@ fn packed_eq_poly<F: Field, EF: ExtensionField<F>>(
     EF::ExtensionPacking::from_ext_slice(&buffer)
 }
 
-pub fn parallel_clone<A: Clone + Send + Sync>(src: &[A], dst: &mut [A]) {
-    if src.len() < 1 << 15 {
-        // sequential copy
-        dst.clone_from_slice(src);
-    } else {
-        assert_eq!(src.len(), dst.len());
-        let chunk_size = src.len() / rayon::current_num_threads().max(1);
-        dst.par_chunks_mut(chunk_size)
-            .zip(src.par_chunks(chunk_size))
-            .for_each(|(d, s)| {
-                d.clone_from_slice(s);
-            });
-    }
-}
-
-#[must_use]
-pub fn parallel_clone_vec<A: Clone + Send + Sync>(vec: &[A]) -> Vec<A> {
-    let mut res = unsafe { uninitialized_vec(vec.len()) };
-    parallel_clone(vec, &mut res);
-    res
-}
 
 pub fn parallel_inner_repeat<A: Copy + Send + Sync>(src: &[A], n: usize) -> Vec<A> {
     if src.len() * n <= 1 << 12 {
