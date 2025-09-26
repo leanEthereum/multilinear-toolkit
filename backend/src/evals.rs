@@ -1,6 +1,7 @@
 use crate::*;
+use fiat_shamir::{EFPacking, PF};
 use itertools::Itertools;
-use p3_field::{ExtensionField, Field};
+use p3_field::{ExtensionField, Field, PrimeCharacteristicRing};
 use rayon::{join, prelude::*};
 use std::borrow::Borrow;
 
@@ -69,6 +70,64 @@ where
     F: Field,
     EF: ExtensionField<F>,
 {
+    eval_multilinear_generic(
+        evals,
+        point,
+        &|a: F, b: EF| b * a,
+        &|a: EF, b: F| a + b,
+        &|a: EF, b: EF| a * b,
+    )
+}
+
+// Turns out to be slower than non packed version:
+
+// fn eval_multilinear_packed_base<EF>(evals: &[PFPacking<EF>], point: &[EF]) -> EF
+// where
+//     EF: ExtensionField<PF<EF>>,
+// {
+//     let log_width = packing_log_width::<EF>();
+//     let res_packed: EFPacking<EF> = eval_multilinear_generic(
+//         evals,
+//         &point[..point.len() - log_width],
+//         &|a: PFPacking<EF>, b: EF| EFPacking::<EF>::from(a) * b,
+//         &|a: EFPacking<EF>, b: PFPacking<EF>| a + b,
+//         &|a: EFPacking<EF>, b: EF| a * b,
+//     );
+//     let res_unpacked: Vec<EF> = unpack_extension(&[res_packed]);
+//     eval_multilinear(&res_unpacked, &point[point.len() - log_width..])
+// }
+
+pub fn eval_packed<EF>(evals: &[EFPacking<EF>], point: &[EF]) -> EF
+where
+    EF: ExtensionField<PF<EF>>,
+{
+    let log_width = packing_log_width::<EF>();
+    let res_packed: EFPacking<EF> = eval_multilinear_generic(
+        evals,
+        &point[..point.len() - log_width],
+        &|a: EFPacking<EF>, b: EF| a * b,
+        &|a: EFPacking<EF>, b: EFPacking<EF>| a + b,
+        &|a: EFPacking<EF>, b: EF| a * b,
+    );
+    let res_unpacked: Vec<EF> = unpack_extension(&[res_packed]);
+    eval_multilinear(&res_unpacked, &point[point.len() - log_width..])
+}
+
+fn eval_multilinear_generic<Coeffs, Point, Res, MCP, ARC, MRP>(
+    evals: &[Coeffs],
+    point: &[Point],
+    mul_coeffs_point: &MCP,
+    add_res_coeffs: &ARC,
+    mul_res_point: &MRP,
+) -> Res
+where
+    Coeffs: Copy + PrimeCharacteristicRing + Sync + Send,
+    Point: Field,
+    Res: Copy + PrimeCharacteristicRing + From<Coeffs> + Sync + Send,
+    MCP: Fn(Coeffs, Point) -> Res + Sync + Send,
+    ARC: Fn(Res, Coeffs) -> Res + Sync + Send,
+    MRP: Fn(Res, Point) -> Res + Sync + Send,
+{
     // Ensure that the number of evaluations matches the number of variables in the point.
     //
     // This is a critical invariant: `evals.len()` must be exactly `2^point.len()`.
@@ -85,51 +144,44 @@ where
         //
         // This is the base case for the recursion: f(x) = f(0) * (1-x) + f(1) * x.
         // The expression is an optimized form: f(0) + x * (f(1) - f(0)).
-        [x] => *x * (evals[1] - evals[0]) + evals[0],
+        [x] => add_res_coeffs(mul_coeffs_point(evals[1] - evals[0], *x), evals[0]),
 
-        // Case: 2 Variables (Bilinear Interpolation)
-        //
-        // This is a fully unrolled version for 2 variables, avoiding recursive calls.
         [x0, x1] => {
             // Interpolate along the x1-axis for x0=0 to get `a0`.
-            let a0 = *x1 * (evals[1] - evals[0]) + evals[0];
+            let a0 = add_res_coeffs(mul_coeffs_point(evals[1] - evals[0], *x1), evals[0]);
             // Interpolate along the x1-axis for x0=1 to get `a1`.
-            let a1 = *x1 * (evals[3] - evals[2]) + evals[2];
+            let a1 = add_res_coeffs(mul_coeffs_point(evals[3] - evals[2], *x1), evals[2]);
             // Finally, interpolate between `a0` and `a1` along the x0-axis.
-            a0 + (a1 - a0) * *x0
+            mul_res_point(a1 - a0, *x0) + a0
         }
 
-        // Cases: 3 and 4 Variables
-        //
-        // These are further unrolled versions for 3 and 4 variables for maximum speed.
-        // The logic is the same as the 2-variable case, just with more steps.
         [x0, x1, x2] => {
-            let a00 = *x2 * (evals[1] - evals[0]) + evals[0];
-            let a01 = *x2 * (evals[3] - evals[2]) + evals[2];
-            let a10 = *x2 * (evals[5] - evals[4]) + evals[4];
-            let a11 = *x2 * (evals[7] - evals[6]) + evals[6];
-            let a0 = a00 + *x1 * (a01 - a00);
-            let a1 = a10 + *x1 * (a11 - a10);
-            a0 + (a1 - a0) * *x0
-        }
-        [x0, x1, x2, x3] => {
-            let a000 = *x3 * (evals[1] - evals[0]) + evals[0];
-            let a001 = *x3 * (evals[3] - evals[2]) + evals[2];
-            let a010 = *x3 * (evals[5] - evals[4]) + evals[4];
-            let a011 = *x3 * (evals[7] - evals[6]) + evals[6];
-            let a100 = *x3 * (evals[9] - evals[8]) + evals[8];
-            let a101 = *x3 * (evals[11] - evals[10]) + evals[10];
-            let a110 = *x3 * (evals[13] - evals[12]) + evals[12];
-            let a111 = *x3 * (evals[15] - evals[14]) + evals[14];
-            let a00 = a000 + *x2 * (a001 - a000);
-            let a01 = a010 + *x2 * (a011 - a010);
-            let a10 = a100 + *x2 * (a101 - a100);
-            let a11 = a110 + *x2 * (a111 - a110);
-            let a0 = a00 + *x1 * (a01 - a00);
-            let a1 = a10 + *x1 * (a11 - a10);
-            a0 + (a1 - a0) * *x0
+            let a00 = add_res_coeffs(mul_coeffs_point(evals[1] - evals[0], *x2), evals[0]);
+            let a01 = add_res_coeffs(mul_coeffs_point(evals[3] - evals[2], *x2), evals[2]);
+            let a10 = add_res_coeffs(mul_coeffs_point(evals[5] - evals[4], *x2), evals[4]);
+            let a11 = add_res_coeffs(mul_coeffs_point(evals[7] - evals[6], *x2), evals[6]);
+            let a0 = a00 + mul_res_point(a01 - a00, *x1);
+            let a1 = a10 + mul_res_point(a11 - a10, *x1);
+            a0 + mul_res_point(a1 - a0, *x0)
         }
 
+        [x0, x1, x2, x3] => {
+            let a000 = add_res_coeffs(mul_coeffs_point(evals[1] - evals[0], *x3), evals[0]);
+            let a001 = add_res_coeffs(mul_coeffs_point(evals[3] - evals[2], *x3), evals[2]);
+            let a010 = add_res_coeffs(mul_coeffs_point(evals[5] - evals[4], *x3), evals[4]);
+            let a011 = add_res_coeffs(mul_coeffs_point(evals[7] - evals[6], *x3), evals[6]);
+            let a100 = add_res_coeffs(mul_coeffs_point(evals[9] - evals[8], *x3), evals[8]);
+            let a101 = add_res_coeffs(mul_coeffs_point(evals[11] - evals[10], *x3), evals[10]);
+            let a110 = add_res_coeffs(mul_coeffs_point(evals[13] - evals[12], *x3), evals[12]);
+            let a111 = add_res_coeffs(mul_coeffs_point(evals[15] - evals[14], *x3), evals[14]);
+            let a00 = a000 + mul_res_point(a001 - a000, *x2);
+            let a01 = a010 + mul_res_point(a011 - a010, *x2);
+            let a10 = a100 + mul_res_point(a101 - a100, *x2);
+            let a11 = a110 + mul_res_point(a111 - a110, *x2);
+            let a0 = a00 + mul_res_point(a01 - a00, *x1);
+            let a1 = a10 + mul_res_point(a11 - a10, *x1);
+            a0 + mul_res_point(a1 - a0, *x0)
+        }
         // General Case (5+ Variables)
         //
         // This handles all other cases, using one of two different strategies.
@@ -166,13 +218,13 @@ where
                 let mut z0_ordered = z0.to_vec();
                 z0_ordered.reverse();
                 // Compute all eq(v_low, p_low) values and fill the `left` vector.
-                compute_eval_eq::<_, _, false>(&z0_ordered, &mut left, EF::ONE);
+                compute_eval_eq::<_, _, false>(&z0_ordered, &mut left, Point::ONE);
 
                 // Repeat the process for the high-order variables.
                 let mut z1_ordered = z1.to_vec();
                 z1_ordered.reverse();
                 // Compute all eq(v_high, p_high) values and fill the `right` vector.
-                compute_eval_eq::<_, _, false>(&z1_ordered, &mut right, EF::ONE);
+                compute_eval_eq::<_, _, false>(&z1_ordered, &mut right, Point::ONE);
 
                 // Parallelized Final Summation
                 //
@@ -183,11 +235,13 @@ where
                     .zip_eq(right.par_iter())
                     .map(|(part, &c)| {
                         // This is the inner sum: a dot product between the evaluation chunk and the `left` basis values.
-                        part.iter()
-                            .zip_eq(left.iter())
-                            .map(|(&a, &b)| b * a)
-                            .sum::<EF>()
-                            * c
+                        mul_res_point(
+                            part.iter()
+                                .zip_eq(left.iter())
+                                .map(|(&a, &b)| mul_coeffs_point(a, b))
+                                .sum::<Res>(),
+                            c,
+                        )
                     })
                     .sum()
             } else {
@@ -200,16 +254,50 @@ where
                 let (f0_eval, f1_eval) = {
                     // Only spawn parallel tasks if the subproblem is large enough to overcome
                     // the overhead of threading.
-                    let work_size: usize = (1 << 15) / std::mem::size_of::<F>();
+                    let work_size: usize = (1 << 15) / std::mem::size_of::<Coeffs>();
                     if evals.len() > work_size {
-                        join(|| eval_multilinear(f0, tail), || eval_multilinear(f1, tail))
+                        join(
+                            || {
+                                eval_multilinear_generic(
+                                    f0,
+                                    tail,
+                                    mul_coeffs_point,
+                                    add_res_coeffs,
+                                    mul_res_point,
+                                )
+                            },
+                            || {
+                                eval_multilinear_generic(
+                                    f1,
+                                    tail,
+                                    mul_coeffs_point,
+                                    add_res_coeffs,
+                                    mul_res_point,
+                                )
+                            },
+                        )
                     } else {
                         // For smaller subproblems, execute sequentially.
-                        (eval_multilinear(f0, tail), eval_multilinear(f1, tail))
+                        (
+                            eval_multilinear_generic(
+                                f0,
+                                tail,
+                                mul_coeffs_point,
+                                add_res_coeffs,
+                                mul_res_point,
+                            ),
+                            eval_multilinear_generic(
+                                f1,
+                                tail,
+                                mul_coeffs_point,
+                                add_res_coeffs,
+                                mul_res_point,
+                            ),
+                        )
                     }
                 };
                 // Perform the final linear interpolation for the first variable `x`.
-                f0_eval + (f1_eval - f0_eval) * *x
+                f0_eval + mul_res_point(f1_eval - f0_eval, *x)
             }
         }
     }
@@ -217,33 +305,32 @@ where
 
 #[cfg(test)]
 mod tests {
-    use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB};
+    use std::time::Instant;
+
+    use p3_koala_bear::QuinticExtensionFieldKB;
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
-    type F = KoalaBear;
+    type F = QuinticExtensionFieldKB;
     type EF = QuinticExtensionFieldKB;
-    use p3_field::PrimeCharacteristicRing;
 
     use super::*;
 
     #[test]
-    fn test_evaluate_sparse() {
-        let n_vars = 10;
+    fn test_evaluate() {
+        let n_vars = 24;
         let mut rng = StdRng::seed_from_u64(0);
         let poly = (0..(1 << n_vars)).map(|_| rng.random()).collect::<Vec<F>>();
-        for n_initial_booleans in 0..n_vars {
-            for rep in 0..1 << n_initial_booleans {
-                let mut point = (0..n_initial_booleans)
-                    .map(|i| EF::from_usize((rep >> i) & 1))
-                    .collect::<Vec<_>>();
-                for _ in n_initial_booleans..n_vars {
-                    point.push(rng.random());
-                }
-                assert_eq!(
-                    poly.evaluate_sparse(&MultilinearPoint(point.clone())),
-                    poly.evaluate(&MultilinearPoint(point))
-                );
-            }
-        }
+        let point = MultilinearPoint((0..n_vars).map(|_| rng.random()).collect::<Vec<EF>>());
+
+        let time = Instant::now();
+        let res_normal = eval_multilinear(&poly, &point);
+        println!("Normal eval time: {:?}", time.elapsed());
+
+        let packed_poly = pack_extension(&poly);
+        let time = Instant::now();
+        let res_packed = eval_packed(&packed_poly, &point);
+        println!("Packed eval time: {:?}", time.elapsed());
+
+        assert_eq!(res_normal, res_packed);
     }
 }
