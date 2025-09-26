@@ -9,10 +9,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backend"
+version = "0.3.0"
+dependencies = [
+ "fiat-shamir",
+ "itertools",
+ "p3-field",
+ "p3-koala-bear",
+ "p3-util",
+ "rand",
+ "rayon",
+ "tracing",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
+
+[[package]]
+name = "constraints-folder"
+version = "0.3.0"
+dependencies = [
+ "fiat-shamir",
+ "p3-air",
+ "p3-field",
+ "p3-matrix",
+]
 
 [[package]]
 name = "crossbeam-deque"
@@ -81,22 +105,6 @@ name = "libc"
 version = "0.2.176"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
-
-[[package]]
-name = "multilinear-toolkit"
-version = "0.1.0"
-dependencies = [
- "fiat-shamir",
- "itertools",
- "p3-air",
- "p3-field",
- "p3-koala-bear",
- "p3-matrix",
- "p3-util",
- "rand",
- "rayon",
- "tracing",
-]
 
 [[package]]
 name = "num-bigint"
@@ -410,6 +418,20 @@ name = "strength_reduce"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
+
+[[package]]
+name = "sumcheck"
+version = "0.3.0"
+dependencies = [
+ "backend",
+ "constraints-folder",
+ "fiat-shamir",
+ "p3-air",
+ "p3-field",
+ "p3-koala-bear",
+ "p3-matrix",
+ "rayon",
+]
 
 [[package]]
 name = "syn"

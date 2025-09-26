@@ -1,13 +1,7 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
-mod sumcheck;
-pub use sumcheck::*;
-
 mod mle;
 pub use mle::*;
-
-mod constraints_folder;
-pub use constraints_folder::*;
 
 mod point;
 pub use point::*;

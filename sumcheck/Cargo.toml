@@ -1,0 +1,20 @@
+[package]
+name = "sumcheck"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+p3-field.workspace = true
+p3-matrix.workspace = true
+p3-air.workspace = true
+
+backend.workspace = true
+constraints-folder.workspace = true
+
+fiat-shamir.workspace = true
+
+rayon.workspace = true
+
+
+[dev-dependencies]
+p3-koala-bear.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "constraints-folder"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+p3-field.workspace = true
+p3-air.workspace = true
+p3-matrix.workspace = true
+fiat-shamir.workspace = true

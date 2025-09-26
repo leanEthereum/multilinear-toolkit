@@ -1,3 +1,4 @@
+use backend::*;
 use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
@@ -176,20 +177,19 @@ where
         })
         .collect::<Vec<Vec<PF<EF>>>>();
 
-    p_evals.extend(
-        multilinears
-            .by_ref()
-            .sumcheck_compute(SumcheckComputeParams {
-                zs: &zs,
-                skips,
-                eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
-                folding_scalars: &folding_scalars,
-                computation,
-                computation_packed: computations_packed,
-                batching_scalars,
-                missing_mul_factor,
-            }),
-    );
+    p_evals.extend(sumcheck_compute(
+        &multilinears.by_ref(),
+        SumcheckComputeParams {
+            zs: &zs,
+            skips,
+            eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
+            folding_scalars: &folding_scalars,
+            computation,
+            computation_packed: computations_packed,
+            batching_scalars,
+            missing_mul_factor,
+        },
+    ));
 
     if !is_zerofier {
         let missing_sum_z = if let Some((eq_factor, _)) = eq_factor {
