@@ -58,38 +58,34 @@ pub fn batch_fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + 
         .for_each(|poly| fold_multilinear_in_place(poly, scalars));
 }
 
-pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
+pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + Copy>(
     m: &mut Vec<NF>,
     scalars: &[F],
 ) {
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
     let new_size = m.len() / scalars.len();
+    let (left, right) = m.split_at_mut(new_size);
 
     if scalars.len() == 2 {
         assert_eq!(scalars[0], F::ONE - scalars[1]);
         let alpha = scalars[1];
-        (0..new_size).into_par_iter().for_each(|i| {
-            let s = (m[i + new_size] - m[i]) * alpha + m[i];
-            unsafe {
-                let ptr = m.as_ptr().add(i) as *mut NF;
-                *ptr = s;
-            }
+        left.par_iter_mut().enumerate().for_each(|(i, out)| {
+            let s = (right[i] - *out) * alpha + *out;
+            *out = s;
         });
-        m.truncate(new_size);
-        return;
+    } else {
+        left.par_iter_mut().enumerate().for_each(|(i, out)| {
+            let s = *out * scalars[0]
+                + scalars
+                    .iter()
+                    .skip(1)
+                    .enumerate()
+                    .map(|(j, s)| right[j * new_size + i] * *s) // only reads
+                    .sum::<NF>();
+            *out = s;
+        });
     }
 
-    (0..new_size).into_par_iter().for_each(|i| {
-        let s = scalars
-            .iter()
-            .enumerate()
-            .map(|(j, s)| m[i + j * new_size] * *s)
-            .sum::<NF>();
-        unsafe {
-            let ptr = m.as_ptr().add(i) as *mut NF;
-            *ptr = s;
-        }
-    });
     m.truncate(new_size);
 }
 
