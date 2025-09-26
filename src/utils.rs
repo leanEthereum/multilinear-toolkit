@@ -1,3 +1,8 @@
+use std::{
+    iter::Sum,
+    ops::{Add, Sub},
+};
+
 use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
@@ -28,54 +33,29 @@ pub const fn packing_width<EF: Field>() -> usize {
     PFPacking::<EF>::WIDTH
 }
 
-pub fn batch_fold_multilinear_in_large_field<F: Field, EF: ExtensionField<F>>(
-    polys: &[&[F]],
+pub fn batch_fold_multilinears<
+    EF: PrimeCharacteristicRing + Copy + Send + Sync,
+    IF: Copy + Sub<Output = IF> + Send + Sync,
+    OF: Copy + Add<IF, Output = OF> + Send + Sync + Sum,
+    F: Fn(IF, EF) -> OF + Sync + Send,
+>(
+    polys: &[&[IF]],
     scalars: &[EF],
-) -> Vec<Vec<EF>> {
-    polys
-        .par_iter()
-        .map(|poly| fold_multilinear_in_large_field(poly, scalars))
-        .collect()
-}
-
-pub fn batch_fold_multilinear_in_large_field_packed<EF: ExtensionField<PF<EF>>>(
-    polys: &[&[EFPacking<EF>]],
-    scalars: &[EF],
-) -> Vec<Vec<EFPacking<EF>>> {
+    mul_if_of: F,
+) -> Vec<Vec<OF>> {
     polys
         .iter()
-        .map(|poly| fold_extension_packed(poly, scalars))
+        .map(|poly| fold_multilinear(poly, scalars, &mul_if_of))
         .collect()
 }
 
-pub fn batch_fold_multilinear_in_large_field_in_place<
-    F: Field,
-    NF: Algebra<F> + Sync + Send + Copy,
->(
+pub fn batch_fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + Copy>(
     polys: &mut [&mut Vec<NF>],
     scalars: &[F],
 ) {
     polys
-        .par_iter_mut()
+        .iter_mut()
         .for_each(|poly| fold_multilinear_in_place(poly, scalars));
-}
-
-pub fn fold_multilinear_in_large_field<F: Field, EF: ExtensionField<F>>(
-    m: &[F],
-    scalars: &[EF],
-) -> Vec<EF> {
-    assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
-    let new_size = m.len() / scalars.len();
-    (0..new_size)
-        .into_par_iter()
-        .map(|i| {
-            scalars
-                .iter()
-                .enumerate()
-                .map(|(j, s)| *s * m[i + j * new_size])
-                .sum()
-        })
-        .collect()
 }
 
 pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
@@ -84,6 +64,21 @@ pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
 ) {
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
     let new_size = m.len() / scalars.len();
+
+    if scalars.len() == 2 {
+        assert_eq!(scalars[0], F::ONE - scalars[1]);
+        let alpha = scalars[1];
+        (0..new_size).into_par_iter().for_each(|i| {
+            let s = (m[i + new_size] - m[i]) * alpha + m[i];
+            unsafe {
+                let ptr = m.as_ptr().add(i) as *mut NF;
+                *ptr = s;
+            }
+        });
+        m.truncate(new_size);
+        return;
+    }
+
     (0..new_size).into_par_iter().for_each(|i| {
         let s = scalars
             .iter()
@@ -98,12 +93,27 @@ pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Copy>(
     m.truncate(new_size);
 }
 
-pub fn fold_extension_packed<EF: ExtensionField<PF<EF>>>(
-    m: &[EFPacking<EF>],
+pub fn fold_multilinear<
+    EF: PrimeCharacteristicRing + Copy + Send + Sync,
+    IF: Copy + Sub<Output = IF> + Send + Sync,
+    OF: Copy + Add<IF, Output = OF> + Send + Sync + Sum,
+    F: Fn(IF, EF) -> OF + Sync + Send,
+>(
+    m: &[IF],
     scalars: &[EF],
-) -> Vec<EFPacking<EF>> {
+    mul_if_of: &F,
+) -> Vec<OF> {
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
     let new_size = m.len() / scalars.len();
+
+    if scalars.len() == 2 {
+        assert_eq!(scalars[0], EF::ONE - scalars[1]);
+        let alpha = scalars[1];
+        return (0..new_size)
+            .into_par_iter()
+            .map(|i| mul_if_of(m[i + new_size] - m[i], alpha) + m[i])
+            .collect();
+    }
 
     (0..new_size)
         .into_par_iter()
@@ -111,7 +121,7 @@ pub fn fold_extension_packed<EF: ExtensionField<PF<EF>>>(
             scalars
                 .iter()
                 .enumerate()
-                .map(|(j, s)| m[i + j * new_size] * *s)
+                .map(|(j, s)| mul_if_of(m[i + j * new_size], *s))
                 .sum()
         })
         .collect()

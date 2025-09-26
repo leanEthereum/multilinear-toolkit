@@ -75,7 +75,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
         match self {
             Self::Owned(owned) => owned.fold_in_large_field_in_place(scalars),
             Self::Ref(_) => {
-                *self = self.by_ref().fold_in_large_field(scalars).into();
+                *self = self.by_ref().fold(scalars).into();
             }
         }
     }
@@ -132,23 +132,22 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
     pub fn fold_in_large_field_in_place(&mut self, scalars: &[EF]) {
         match self {
             Self::Base(_) | Self::BasePacked(_) => {
-                *self = self.by_ref().fold_in_large_field(scalars);
+                *self = self.by_ref().fold(scalars);
             }
             Self::Extension(pols) => {
-                batch_fold_multilinear_in_large_field_in_place(
+                batch_fold_multilinear_in_place(
                     &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
                     scalars,
                 );
             }
             Self::ExtensionPacked(pols) => {
-                batch_fold_multilinear_in_large_field_in_place(
+                batch_fold_multilinear_in_place(
                     &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
                     scalars,
                 );
             }
         }
     }
-
 }
 
 impl<EF: ExtensionField<PF<EF>>> Mle<EF> {
@@ -316,31 +315,28 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
         }
     }
 
-    pub fn fold_in_large_field(&self, scalars: &[EF]) -> MleGroupOwned<EF> {
+    pub fn fold(&self, scalars: &[EF]) -> MleGroupOwned<EF> {
         match self {
             Self::Base(pols) => {
-                MleGroupOwned::Extension(batch_fold_multilinear_in_large_field(pols, scalars))
+                MleGroupOwned::Extension(batch_fold_multilinears(pols, scalars, |a, b| b * a))
             }
             Self::Extension(pols) => {
-                MleGroupOwned::Extension(batch_fold_multilinear_in_large_field(pols, scalars))
+                MleGroupOwned::Extension(batch_fold_multilinears(pols, scalars, |a, b| b * a))
             }
-            Self::BasePacked(pols) => MleGroupOwned::ExtensionPacked(
-                // TODO this is ugly and not optimized
-                batch_fold_multilinear_in_large_field(
-                    &pols
-                        .iter()
-                        .copied()
-                        .map(PFPacking::<EF>::unpack_slice)
-                        .collect::<Vec<_>>(),
-                    scalars,
-                )
-                .iter()
-                .map(|m| pack_extension(m))
-                .collect(),
-            ),
-            Self::ExtensionPacked(pols) => MleGroupOwned::ExtensionPacked(
-                batch_fold_multilinear_in_large_field_packed(pols, scalars),
-            ),
+            Self::BasePacked(pols) => {
+                let scalars_packed = scalars
+                    .iter()
+                    .map(|&s| EFPacking::<EF>::from(s))
+                    .collect::<Vec<_>>();
+                MleGroupOwned::ExtensionPacked(batch_fold_multilinears(
+                    pols,
+                    &scalars_packed,
+                    |a, b| b * a,
+                ))
+            }
+            Self::ExtensionPacked(pols) => {
+                MleGroupOwned::ExtensionPacked(batch_fold_multilinears(pols, scalars, |a, b| a * b))
+            }
         }
     }
 

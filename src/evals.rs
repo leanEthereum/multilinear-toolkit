@@ -58,17 +58,6 @@ impl<F: Field, EL: Borrow<[F]>> EvaluationsList<F> for EL {
     }
 }
 
-#[must_use]
-pub fn fold_multilinear<F: Field, EF: ExtensionField<F>>(
-    poly: &[F],
-    folding_randomness: &MultilinearPoint<EF>,
-) -> Vec<EF> {
-    let folding_factor = folding_randomness.num_variables();
-    poly.par_chunks_exact(1 << folding_factor)
-        .map(|ev| eval_multilinear(ev, folding_randomness))
-        .collect()
-}
-
 /// Multiply the polynomial by a scalar factor.
 #[must_use]
 pub fn scale_poly<F: Field, EF: ExtensionField<F>>(poly: &[F], factor: EF) -> Vec<EF> {
