@@ -9,6 +9,9 @@ use p3_matrix::dense::RowMajorMatrixView;
 use rayon::prelude::*;
 use std::any::TypeId;
 
+use crate::ProductComputation;
+use crate::compute_product_sumcheck_polynomial;
+
 pub trait SumcheckComputation<NF, EF>: Sync {
     fn degree(&self) -> usize;
     fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF;
@@ -94,43 +97,12 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct ProductComputation;
-
-impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
-    for ProductComputation
-{
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
-        if TypeId::of::<IF>() == TypeId::of::<EF>() {
-            let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
-            unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
-        } else {
-            todo!("There would be embedding overhead ...?")
-        }
-    }
-    fn degree(&self) -> usize {
-        2
-    }
-}
-
-impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComputation {
-    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        unreachable!()
-    }
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
-    }
-    fn degree(&self) -> usize {
-        2
-    }
-}
-
 pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, SCP>(
     group: &MleGroupRef<'a, EF>,
     params: SumcheckComputeParams<'a, EF, SC, SCP>,
 ) -> Vec<(PF<EF>, EF)>
 where
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
     let SumcheckComputeParams {
@@ -142,6 +114,7 @@ where
         computation_packed,
         batching_scalars,
         missing_mul_factor,
+        sum,
     } = params;
 
     let fold_size = 1 << (group.n_vars() - skips);
@@ -151,8 +124,26 @@ where
         fold_size
     };
 
-    //   // TODO handle this in a more general way
-    // todo!();
+    // TODO handle this in a more general way
+    if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
+        assert!(missing_mul_factor.is_none());
+        assert!(batching_scalars.is_empty());
+        assert_eq!(group.n_columns(), 2);
+
+        match group {
+            MleGroupRef::Extension(multilinears) => {
+                let pol_0 = &multilinears[0];
+                let pol_1 = &multilinears[1];
+                let [c0, c1, c2] = compute_product_sumcheck_polynomial(pol_0, pol_1, sum);
+                let eval_0 = c0;
+                let eval_1 = c0 + c1 + c2;
+                let eval_2 = eval_1 + c1 + c2 + c2.double();
+                assert_eq!(zs, &[0, 2]);
+                return vec![(PF::<EF>::ZERO, eval_0), (PF::<EF>::TWO, eval_2)];
+            }
+            _ => unimplemented!(),
+        }
+    }
 
     match group {
         MleGroupRef::ExtensionPacked(multilinears) => {
@@ -308,6 +299,7 @@ pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC, SCP> {
     pub computation_packed: &'a SCP,
     pub batching_scalars: &'a [EF],
     pub missing_mul_factor: Option<EF>,
+    pub sum: EF,
 }
 
 #[derive(Debug)]

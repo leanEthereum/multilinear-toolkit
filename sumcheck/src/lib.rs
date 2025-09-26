@@ -11,3 +11,6 @@ pub use selectors::*;
 
 mod sc_computation;
 pub use sc_computation::*;
+
+mod product_computation;
+pub use product_computation::*;

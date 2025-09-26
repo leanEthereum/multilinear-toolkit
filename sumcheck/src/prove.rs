@@ -21,7 +21,7 @@ pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
     let multilinears: MleGroup<'a, EF> = multilinears.into();
@@ -69,7 +69,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, MleGroup<'a, EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
@@ -149,7 +149,7 @@ fn compute_and_send_polynomial<'a, EF, SC, SCP>(
 ) -> DensePolynomial<EF>
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
     let selectors = univariate_selectors::<PF<EF>>(skips);
@@ -188,6 +188,7 @@ where
             computation_packed: computations_packed,
             batching_scalars,
             missing_mul_factor,
+            sum,
         },
     ));
 
@@ -219,6 +220,7 @@ where
         )
         .unwrap();
     }
+
     // sanity check
     assert_eq!(
         (0..1 << skips)
