@@ -1,3 +1,8 @@
+[package]
+name = "multilinear-toolkit"
+version.workspace = true
+edition.workspace = true
+
 [workspace.package]
 version = "0.3.0"
 edition = "2024"
@@ -23,3 +28,13 @@ tracing = "*"
 backend = { path = "backend"}
 constraints-folder = { path = "constraints_folder"}
 sumcheck = { path = "sumcheck"}
+
+
+[dependencies]
+backend.workspace = true
+constraints-folder.workspace = true
+sumcheck.workspace = true
+p3-field.workspace = true
+p3-util.workspace = true
+fiat-shamir.workspace = true
+rayon.workspace = true

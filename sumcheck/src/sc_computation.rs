@@ -151,6 +151,9 @@ where
         fold_size
     };
 
+    //   // TODO handle this in a more general way
+    // todo!();
+
     match group {
         MleGroupRef::ExtensionPacked(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());

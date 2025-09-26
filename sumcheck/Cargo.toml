@@ -15,6 +15,5 @@ fiat-shamir.workspace = true
 
 rayon.workspace = true
 
-
 [dev-dependencies]
 p3-koala-bear.workspace = true
