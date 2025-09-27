@@ -13,7 +13,7 @@ pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     computation: &SC,
     computation_packed: &SCP,
     batching_scalars: &[EF],
-    eq_factor: Option<(Vec<EF>, Option<Mle<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
@@ -60,7 +60,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     computation: &SC,
     computation_packed: &SCP,
     batching_scalars: &[EF],
-    mut eq_factor: Option<(Vec<EF>, Option<Mle<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    mut eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     mut is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     mut sum: EF,
@@ -73,13 +73,13 @@ where
     SCP: SumcheckComputationPacked<EF>,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
-    let mut eq_factor: Option<(Vec<EF>, Mle<EF>)> = eq_factor.take().map(|(eq_point, eq_mle)| {
+    let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> = eq_factor.take().map(|(eq_point, eq_mle)| {
         let eq_mle = eq_mle.unwrap_or_else(|| {
             let eval_eq_ext = eval_eq(&eq_point[1..]);
             if multilinears.by_ref().is_packed() {
-                Mle::ExtensionPacked(pack_extension(&eval_eq_ext))
+                MleOwned::ExtensionPacked(pack_extension(&eval_eq_ext))
             } else {
-                Mle::Extension(eval_eq_ext)
+                MleOwned::Extension(eval_eq_ext)
             }
         });
         (eq_point, eq_mle)
@@ -87,8 +87,8 @@ where
     let mut n_vars = multilinears.by_ref().n_vars();
     if let Some((eq_point, eq_mle)) = &eq_factor {
         assert_eq!(eq_point.len(), n_vars - skip + 1);
-        assert_eq!(eq_mle.n_vars(), eq_point.len() - 1);
-        assert_eq!(eq_mle.is_packed(), multilinears.by_ref().is_packed());
+        assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
+        assert_eq!(eq_mle.by_ref().is_packed(), multilinears.by_ref().is_packed());
     }
 
     let mut challenges = Vec::new();
@@ -98,7 +98,7 @@ where
             // unpack
             multilinears = multilinears.by_ref().unpack().into();
             if let Some((_, eq_mle)) = &mut eq_factor {
-                *eq_mle = Mle::Extension(unpack_extension(eq_mle.as_extension_packed().unwrap()));
+                *eq_mle = MleOwned::Extension(unpack_extension(eq_mle.by_ref().as_extension_packed().unwrap()));
             }
         }
 
@@ -140,7 +140,7 @@ fn compute_and_send_polynomial<'a, EF, SC, SCP>(
     multilinears: &MleGroup<'a, EF>,
     computation: &SC,
     computations_packed: &SCP,
-    eq_factor: &Option<(Vec<EF>, Mle<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     batching_scalars: &[EF],
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
@@ -239,7 +239,7 @@ fn on_challenge_received<'a, EF>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     multilinears: &mut MleGroup<'a, EF>,
     n_vars: &mut usize,
-    eq_factor: &mut Option<(Vec<EF>, Mle<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    eq_factor: &mut Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     sum: &mut EF,
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
@@ -266,7 +266,7 @@ fn on_challenge_received<'a, EF>(
                 / (EF::ONE - eq_factor.get(1).copied().unwrap_or_default()),
         );
         eq_factor.remove(0);
-        eq_mle.truncate(eq_mle.packed_len() / 2);
+        eq_mle.truncate(eq_mle.by_ref().packed_len() / 2);
     }
 
     multilinears.fold_in_large_field_in_place(&folding_scalars);

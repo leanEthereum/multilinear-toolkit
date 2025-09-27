@@ -255,7 +255,7 @@ where
             evals
         }
         MleGroupRef::Base(multilinears) => {
-            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap().as_slice());
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
             sumcheck_compute_not_packed(
                 multilinears,
                 SumcheckComputeNotPackedParams {
@@ -271,7 +271,7 @@ where
             )
         }
         MleGroupRef::Extension(multilinears) => {
-            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap().as_slice());
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
             sumcheck_compute_not_packed(
                 multilinears,
                 SumcheckComputeNotPackedParams {
@@ -293,7 +293,7 @@ where
 pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC, SCP> {
     pub zs: &'a [usize],
     pub skips: usize,
-    pub eq_mle: Option<&'a Mle<EF>>,
+    pub eq_mle: Option<&'a MleOwned<EF>>,
     pub folding_scalars: &'a [Vec<PF<EF>>],
     pub computation: &'a SC,
     pub computation_packed: &'a SCP,
