@@ -78,4 +78,40 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
             }
         }
     }
+
+    pub fn split(self) -> Vec<MleOwned<EF>> {
+        match self {
+            Self::Base(v) => v.into_iter().map(|col| MleOwned::Base(col)).collect(),
+            Self::Extension(v) => v.into_iter().map(|col| MleOwned::Extension(col)).collect(),
+            Self::BasePacked(v) => v.into_iter().map(|col| MleOwned::PackedBase(col)).collect(),
+            Self::ExtensionPacked(v) => v
+                .into_iter()
+                .map(|col| MleOwned::ExtensionPacked(col))
+                .collect(),
+        }
+    }
+
+    pub fn merge(mles: Vec<MleOwned<EF>>) -> Self {
+        assert!(!mles.is_empty());
+        match &mles[0] {
+            MleOwned::Base(_) => {
+                Self::Base(mles.into_iter().map(|m| m.into_base().unwrap()).collect())
+            }
+            MleOwned::Extension(_) => Self::Extension(
+                mles.into_iter()
+                    .map(|m| m.into_extension().unwrap())
+                    .collect(),
+            ),
+            MleOwned::PackedBase(_) => Self::BasePacked(
+                mles.into_iter()
+                    .map(|m| m.into_base_backed().unwrap())
+                    .collect(),
+            ),
+            MleOwned::ExtensionPacked(_) => Self::ExtensionPacked(
+                mles.into_iter()
+                    .map(|m| m.into_extension_packed().unwrap())
+                    .collect(),
+            ),
+        }
+    }
 }
