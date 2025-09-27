@@ -130,19 +130,20 @@ where
         assert!(batching_scalars.is_empty());
         assert_eq!(group.n_columns(), 2);
 
-        match group {
+        let poly = match group {
             MleGroupRef::Extension(multilinears) => {
-                let pol_0 = &multilinears[0];
-                let pol_1 = &multilinears[1];
-                let [c0, c1, c2] = compute_product_sumcheck_polynomial(pol_0, pol_1, sum);
-                let eval_0 = c0;
-                let eval_1 = c0 + c1 + c2;
-                let eval_2 = eval_1 + c1 + c2 + c2.double();
-                assert_eq!(zs, &[0, 2]);
-                return vec![(PF::<EF>::ZERO, eval_0), (PF::<EF>::TWO, eval_2)];
+                compute_product_sumcheck_polynomial(&multilinears[0], &multilinears[1], sum, |e| {
+                    vec![e]
+                })
+            }
+            MleGroupRef::ExtensionPacked(multilinears) => {
+                compute_product_sumcheck_polynomial(&multilinears[0], &multilinears[1], sum, |e| {
+                    EFPacking::<EF>::to_ext_iter([e]).collect()
+                })
             }
             _ => unimplemented!(),
-        }
+        };
+        return vec![(PF::<EF>::ZERO, poly.coeffs[0]), (PF::<EF>::TWO, poly.evaluate(EF::TWO))];
     }
 
     match group {

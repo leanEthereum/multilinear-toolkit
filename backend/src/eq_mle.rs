@@ -1,4 +1,5 @@
 use crate::*;
+use fiat_shamir::{EFPacking, PF};
 use p3_field::*;
 use p3_util::{iter_array_chunks_padded, log2_strict_usize};
 use rayon::prelude::*;
@@ -28,10 +29,9 @@ pub fn eval_eq<F: Field>(eval: &[F]) -> Vec<F> {
 }
 
 #[inline]
-pub fn compute_sparse_eval_eq<F, EF>(eval: &[EF], out: &mut [EF], scalar: EF)
+pub fn compute_sparse_eval_eq<EF>(eval: &[EF], out: &mut [EF], scalar: EF)
 where
-    F: Field,
-    EF: ExtensionField<F>,
+    EF: ExtensionField<PF<EF>>,
 {
     let boolean_starts = eval
         .iter()
@@ -64,10 +64,10 @@ where
     let out = &mut out[starts_big_endian * new_out_size..(starts_big_endian + 1) * new_out_size];
 
     if boolean_ends.len() == 0 {
-        compute_eval_eq::<F, EF, true>(eval, out, scalar);
+        compute_eval_eq::<PF<EF>, EF, true>(eval, out, scalar);
     } else {
         let mut buff = unsafe { uninitialized_vec::<EF>(out.len() >> boolean_ends.len()) };
-        compute_eval_eq::<F, EF, false>(
+        compute_eval_eq::<PF<EF>, EF, false>(
             &eval[..eval.len() - boolean_ends.len()],
             &mut buff,
             scalar,
@@ -79,6 +79,54 @@ where
             .for_each(|(o, v)| {
                 *o += v;
             });
+    }
+}
+
+#[inline]
+pub fn compute_sparse_eval_eq_packed<EF>(eval: &[EF], out: &mut [EFPacking<EF>], scalar: EF)
+where
+    EF: ExtensionField<PF<EF>>,
+{
+    let log_packing = packing_log_width::<EF>();
+
+    let boolean_starts = eval
+        .iter()
+        .take_while(|&&x| x.is_zero() || x.is_one())
+        .map(|&x| x.is_one())
+        .collect::<Vec<_>>();
+    let starts_big_endian = boolean_starts
+        .iter()
+        .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
+
+    if boolean_starts.len() == eval.len() {
+        // full of booleans
+        let packed = &mut out[starts_big_endian >> log_packing];
+        let index_in_packed = starts_big_endian & ((1 << log_packing) - 1);
+        let mut unpacked: Vec<EF> = unpack_extension(&[*packed]);
+        unpacked[index_in_packed] += scalar;
+        *packed = pack_extension(&unpacked)[0];
+        return;
+    }
+
+    let mut boolean_ends = eval
+        .iter()
+        .rev()
+        .take_while(|&&x| x.is_zero() || x.is_one())
+        .map(|&x| x.is_one())
+        .collect::<Vec<_>>();
+    boolean_ends.reverse();
+    // let ends_big_endian = boolean_ends
+    //     .iter()
+    //     .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
+
+    let eval = &eval[boolean_starts.len()..];
+    let new_out_size = 1 << (eval.len() - log_packing);
+    let out = &mut out[starts_big_endian * new_out_size..(starts_big_endian + 1) * new_out_size];
+
+    if boolean_ends.len() == 0 {
+        compute_eval_eq_packed::<EF, true>(eval, out, scalar);
+    } else {
+        unimplemented!()
     }
 }
 
@@ -162,13 +210,12 @@ where
 }
 
 #[inline]
-pub fn compute_eval_eq_packed<F, EF, const INITIALIZED: bool>(
+pub fn compute_eval_eq_packed<EF, const INITIALIZED: bool>(
     eval: &[EF],
     out: &mut [EF::ExtensionPacking],
     scalar: EF,
 ) where
-    F: Field,
-    EF: ExtensionField<F>,
+    EF: ExtensionField<PF<EF>>,
 {
     // It's possible for this to be called with F = EF (Despite F actually being an extension field).
     //
@@ -180,7 +227,7 @@ pub fn compute_eval_eq_packed<F, EF, const INITIALIZED: bool>(
     //
     // Be careful: this means code relying on packing optimizations should **not assume**
     // `packing_width > 1` is always true.
-    let packing_width = F::Packing::WIDTH;
+    let packing_width = packing_width::<EF>();
     let log_packing_width = log2_strict_usize(packing_width);
 
     assert!(log_packing_width <= eval.len());
@@ -1107,7 +1154,6 @@ fn packed_eq_poly<F: Field, EF: ExtensionField<F>>(
     EF::ExtensionPacking::from_ext_slice(&buffer)
 }
 
-
 pub fn parallel_inner_repeat<A: Copy + Send + Sync>(src: &[A], n: usize) -> Vec<A> {
     if src.len() * n <= 1 << 12 {
         // sequential repeat
@@ -1152,7 +1198,7 @@ mod tests {
     type EF = QuinticExtensionFieldKB;
 
     #[test]
-    fn test() {
+    fn test_compute_sparse_eval() {
         let eval = vec![
             F::ZERO,
             F::ONE,
@@ -1179,6 +1225,36 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_sparse_eval_packed() {
+        let n_vars: usize = 22;
+        assert!(n_vars.is_multiple_of(2));
+        let starts = vec![
+            vec![EF::ZERO, EF::ONE, EF::ONE, EF::ZERO],
+            vec![],
+            vec![EF::ZERO, EF::ZERO, EF::ZERO, EF::ZERO],
+            vec![EF::ONE, EF::ONE, EF::ONE, EF::ONE],
+            vec![EF::ONE; n_vars],
+            vec![EF::ZERO; n_vars],
+            [EF::ZERO, EF::ONE].repeat(n_vars / 2),
+            [EF::ONE, EF::ZERO].repeat(n_vars / 2),
+        ];
+        let mut rng = StdRng::seed_from_u64(0);
+        let scalar: EF = rng.random();
+        for mut point in starts {
+            while point.len() < n_vars {
+                point.push(rng.random());
+            }
+            let mut out_no_packing = EF::zero_vec(1 << n_vars);
+            let mut out_packed =
+                EFPacking::<EF>::zero_vec(1 << (n_vars - packing_log_width::<EF>()));
+            compute_sparse_eval_eq(&point, &mut out_no_packing, scalar);
+            compute_sparse_eval_eq_packed(&point, &mut out_packed, scalar);
+            let unpacked: Vec<EF> = unpack_extension(&out_packed);
+            assert_eq!(out_no_packing, unpacked);
+        }
+    }
+
+    #[test]
     fn test_packed_eval_eq() {
         let packing_width = <F as Field>::Packing::WIDTH;
         let log_packing_width = log2_strict_usize(packing_width);
@@ -1202,7 +1278,7 @@ mod tests {
                     1 << (n_vars - log_packing_width),
                 );
                 let time = Instant::now();
-                compute_eval_eq_packed::<F, _, true>(&eval, &mut out_2, scalar);
+                compute_eval_eq_packed::<_, true>(&eval, &mut out_2, scalar);
                 println!("EXTENSION PACKED: {:?}", time.elapsed());
 
                 let unpacked_out_2: Vec<EF> =

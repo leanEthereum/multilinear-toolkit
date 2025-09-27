@@ -1,5 +1,6 @@
 use std::any::TypeId;
 
+use backend::DensePolynomial;
 use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
@@ -37,31 +38,35 @@ impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComput
     }
 }
 
-pub(crate) fn compute_product_sumcheck_polynomial<
-    F: Field,
-    EF: ExtensionField<PF<EF>> + ExtensionField<F>,
+pub fn compute_product_sumcheck_polynomial<
+    F: PrimeCharacteristicRing + Copy + Send + Sync,
+    EF: Field,
+    EFPacking: Algebra<F> + Copy + Send + Sync,
 >(
-    pol_0: &[F],
-    pol_1: &[EF],
+    pol_0: &[F],         // evals
+    pol_1: &[EFPacking], // weights
     sum: EF,
-) -> [EF; 3] {
+    decompose: impl Fn(EFPacking) -> Vec<EF>,
+) -> DensePolynomial<EF> {
     let n = pol_0.len();
     assert_eq!(n, pol_1.len());
     assert!(n.is_power_of_two());
 
-    let (c0, c2) = pol_0[..n / 2]
+    let (c0_packed, c2_packed) = pol_0[..n / 2]
         .par_iter()
         .zip(pol_0[n / 2..].par_iter())
         .zip(pol_1[..n / 2].par_iter().zip(pol_1[n / 2..].par_iter()))
         .map(sumcheck_quadratic)
         .reduce(
-            || (EF::ZERO, EF::ZERO),
+            || (EFPacking::ZERO, EFPacking::ZERO),
             |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
         );
+    let c0 = decompose(c0_packed).into_iter().sum::<EF>();
+    let c2 = decompose(c2_packed).into_iter().sum::<EF>();
 
     let c1 = sum - c0.double() - c2;
 
-    [c0, c1, c2]
+    DensePolynomial::new(vec![c0, c1, c2])
 }
 
 #[inline]
@@ -69,8 +74,8 @@ pub(crate) fn sumcheck_quadratic<F, EF>(
     ((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF)),
 ) -> (EF, EF)
 where
-    F: Field,
-    EF: ExtensionField<F>,
+    F: PrimeCharacteristicRing + Copy,
+    EF: Algebra<F> + Copy,
 {
     // Compute the constant coefficient:
     // p(0) * w(0)
