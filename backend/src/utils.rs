@@ -157,3 +157,62 @@ pub fn parallel_clone_vec<A: Clone + Send + Sync>(vec: &[A]) -> Vec<A> {
     parallel_clone(vec, &mut res);
     res
 }
+
+pub fn dot_product_ef_packed_par<EF: ExtensionField<PF<EF>>, R: Sync + Send + Copy>(
+    a: &[EFPacking<EF>],
+    b: &[R],
+) -> EF
+where
+    EFPacking<EF>: Algebra<R>,
+{
+    assert_eq!(a.len(), b.len());
+    let res_packed: EFPacking<EF> = a
+        .par_iter()
+        .zip(b.par_iter())
+        .map(|(&x, &y)| x * y)
+        .sum::<EFPacking<EF>>();
+    unpack_extension(&[res_packed]).into_iter().sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    use super::*;
+    type F = KoalaBear;
+    type EF = QuinticExtensionFieldKB;
+
+    #[test]
+    fn test_dot_product_ef_f_packed() {
+        let n = 1 << 20;
+        let mut rng = StdRng::seed_from_u64(0);
+        let a: Vec<EF> = (0..n).map(|_| rng.random()).collect();
+        let b: Vec<F> = (0..n).map(|_| rng.random()).collect();
+        assert_eq!(
+            dot_product_ef_packed_par::<EF, _>(
+                &pack_extension(&a),
+                PFPacking::<EF>::pack_slice(&b)
+            ),
+            a.par_iter()
+                .zip(b.par_iter())
+                .map(|(&x, &y)| x * y)
+                .sum::<EF>()
+        );
+    }
+
+    #[test]
+    fn test_dot_product_ef_ef_packed() {
+        let n = 1 << 20;
+        let mut rng = StdRng::seed_from_u64(0);
+        let a: Vec<EF> = (0..n).map(|_| rng.random()).collect();
+        let b: Vec<EF> = (0..n).map(|_| rng.random()).collect();
+        assert_eq!(
+            dot_product_ef_packed_par::<EF, _>(&pack_extension(&a), &pack_extension(&b),),
+            a.par_iter()
+                .zip(b.par_iter())
+                .map(|(&x, &y)| x * y)
+                .sum::<EF>()
+        );
+    }
+}
