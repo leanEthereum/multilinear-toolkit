@@ -216,3 +216,32 @@ mod tests {
         );
     }
 }
+
+pub fn split_at_mut_many<'a, A>(slice: &'a mut [A], indices: &[usize]) -> Vec<&'a mut [A]> {
+    for i in 0..indices.len() {
+        if i > 0 {
+            assert!(indices[i] > indices[i - 1]);
+        }
+        assert!(indices[i] <= slice.len());
+    }
+
+    if indices.is_empty() {
+        return vec![slice];
+    }
+
+    let mut result = Vec::with_capacity(indices.len() + 1);
+    let mut current_slice = slice;
+    let mut prev_idx = 0;
+
+    for &idx in indices {
+        let adjusted_idx = idx - prev_idx;
+        let (left, right) = current_slice.split_at_mut(adjusted_idx);
+        result.push(left);
+        current_slice = right;
+        prev_idx = idx;
+    }
+
+    result.push(current_slice);
+
+    result
+}
