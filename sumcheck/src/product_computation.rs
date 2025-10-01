@@ -1,11 +1,11 @@
 use std::any::TypeId;
 
-use backend::DensePolynomial;
+use backend::{DensePolynomial, Mle, MleGroupOwned, MleRef, MultilinearPoint};
 use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
 
-use crate::{SumcheckComputation, SumcheckComputationPacked};
+use crate::{SumcheckComputation, SumcheckComputationPacked, sumcheck_prove_many_rounds};
 
 #[derive(Debug)]
 pub struct ProductComputation;
@@ -36,6 +36,64 @@ impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComput
     fn degree(&self) -> usize {
         2
     }
+}
+
+pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
+    pol_a: &mut Mle<'_, EF>,
+    pol_b: &mut Mle<'_, EF>,
+    prover_state: &mut ProverState<PF<EF>, EF, impl FSChallenger<EF>>,
+    mut sum: EF,
+    n_rounds: usize,
+) -> (MultilinearPoint<EF>, EF) {
+    assert!(n_rounds >= 1);
+    let sumcheck_poly = match (pol_a.by_ref(), pol_b.by_ref()) {
+        (MleRef::BasePacked(evals), MleRef::ExtensionPacked(weights)) => {
+            compute_product_sumcheck_polynomial(&evals, &weights, sum, |e| {
+                EFPacking::<EF>::to_ext_iter([e]).collect()
+            })
+        }
+        (MleRef::ExtensionPacked(evals), MleRef::ExtensionPacked(weights)) => {
+            compute_product_sumcheck_polynomial(evals, &weights, sum, |e| {
+                EFPacking::<EF>::to_ext_iter([e]).collect()
+            })
+        }
+        _ => unimplemented!(),
+    };
+    prover_state.add_extension_scalars(&sumcheck_poly.coeffs);
+
+    // TODO: re-enable PoW grinding
+    // prover_state.pow_grinding(pow_bits);
+
+    let r: EF = prover_state.sample();
+
+    pol_b.fold_in_place(&[(EF::ONE - r), r]);
+    pol_a.fold_in_place(&[(EF::ONE - r), r]);
+
+    sum = sumcheck_poly.evaluate(r);
+
+    let (mut challenges, folds, sum) = sumcheck_prove_many_rounds(
+        1,
+        MleGroupOwned::merge(vec![
+            std::mem::take(&mut pol_a.as_owned_mut().unwrap()),
+            std::mem::take(&mut pol_b.as_owned_mut().unwrap()),
+        ]),
+        &ProductComputation,
+        &ProductComputation,
+        &[],
+        None,
+        false,
+        prover_state,
+        sum,
+        None,
+        n_rounds - 1,
+    );
+
+    let [evals_folded, weights_folded] = folds.as_owned().unwrap().split().try_into().unwrap();
+    *pol_a = Mle::Owned(evals_folded);
+    *pol_b = Mle::Owned(weights_folded);
+
+    challenges.insert(0, r);
+    (challenges, sum)
 }
 
 pub fn compute_product_sumcheck_polynomial<

@@ -77,4 +77,13 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
             Self::ExtensionPacked(pol) => eval_packed(pol, &point.0),
         }
     }
+
+    pub fn pack(&self) -> Mle<'a, EF> {
+        match self {
+            Self::Base(v) => Mle::Ref(MleRef::BasePacked(PFPacking::<EF>::pack_slice(v))),
+            Self::Extension(v) => Mle::Owned(MleOwned::ExtensionPacked(pack_extension(v))),
+            Self::BasePacked(_) => Mle::Ref(self.clone()),
+            Self::ExtensionPacked(_) => Mle::Ref(self.clone()),
+        }
+    }
 }

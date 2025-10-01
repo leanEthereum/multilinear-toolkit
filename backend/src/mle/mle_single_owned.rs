@@ -1,13 +1,14 @@
 use fiat_shamir::*;
 use p3_field::ExtensionField;
 
-use crate::{MleRef, MultilinearPoint};
+use crate::{pack_extension, Mle, MleRef, MultilinearPoint};
+use p3_field::PackedValue;
 
 #[derive(Debug, Clone)]
 pub enum MleOwned<EF: ExtensionField<PF<EF>>> {
     Base(Vec<PF<EF>>),
     Extension(Vec<EF>),
-    PackedBase(Vec<PFPacking<EF>>),
+    BasePacked(Vec<PFPacking<EF>>),
     ExtensionPacked(Vec<EFPacking<EF>>),
 }
 
@@ -22,7 +23,7 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
         match self {
             Self::Base(v) => MleRef::Base(v),
             Self::Extension(v) => MleRef::Extension(v),
-            Self::PackedBase(v) => MleRef::BasePacked(v),
+            Self::BasePacked(v) => MleRef::BasePacked(v),
             Self::ExtensionPacked(v) => MleRef::ExtensionPacked(v),
         }
     }
@@ -31,7 +32,7 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
         match self {
             Self::Base(v) => v.truncate(n),
             Self::Extension(v) => v.truncate(n),
-            Self::PackedBase(v) => v.truncate(n),
+            Self::BasePacked(v) => v.truncate(n),
             Self::ExtensionPacked(v) => v.truncate(n),
         }
     }
@@ -52,7 +53,7 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
 
     pub fn as_packed_base(&self) -> Option<&[PFPacking<EF>]> {
         match self {
-            Self::PackedBase(pb) => Some(pb),
+            Self::BasePacked(pb) => Some(pb),
             _ => None,
         }
     }
@@ -87,7 +88,7 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
 
     pub fn into_base_backed(self) -> Option<Vec<PFPacking<EF>>> {
         match self {
-            Self::PackedBase(pb) => Some(pb),
+            Self::BasePacked(pb) => Some(pb),
             _ => None,
         }
     }
@@ -101,5 +102,14 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
 
     pub fn evaluate(&self, point: &MultilinearPoint<EF>) -> EF {
         self.by_ref().evaluate(point)
+    }
+
+    pub fn pack<'a>(&'a self) -> Mle<'a, EF> {
+        match self {
+            Self::Base(v) => Mle::Ref(MleRef::BasePacked(PFPacking::<EF>::pack_slice(v))),
+            Self::Extension(v) => Mle::Owned(MleOwned::ExtensionPacked(pack_extension(v))),
+            Self::BasePacked(_) => Mle::Ref(self.by_ref()),
+            Self::ExtensionPacked(_) => Mle::Ref(self.by_ref()),
+        }
     }
 }

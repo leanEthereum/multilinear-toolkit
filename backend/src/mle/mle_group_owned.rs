@@ -83,7 +83,7 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         match self {
             Self::Base(v) => v.into_iter().map(|col| MleOwned::Base(col)).collect(),
             Self::Extension(v) => v.into_iter().map(|col| MleOwned::Extension(col)).collect(),
-            Self::BasePacked(v) => v.into_iter().map(|col| MleOwned::PackedBase(col)).collect(),
+            Self::BasePacked(v) => v.into_iter().map(|col| MleOwned::BasePacked(col)).collect(),
             Self::ExtensionPacked(v) => v
                 .into_iter()
                 .map(|col| MleOwned::ExtensionPacked(col))
@@ -102,7 +102,7 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
                     .map(|m| m.into_extension().unwrap())
                     .collect(),
             ),
-            MleOwned::PackedBase(_) => Self::BasePacked(
+            MleOwned::BasePacked(_) => Self::BasePacked(
                 mles.into_iter()
                     .map(|m| m.into_base_backed().unwrap())
                     .collect(),
