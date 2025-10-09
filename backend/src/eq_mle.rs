@@ -16,7 +16,11 @@ const NUM_THREADS: usize = 1 << LOG_NUM_THREADS;
 /// defined on the boolean hypercube by: ∀ (x_1, ..., x_n) ∈ {0, 1}^n,
 /// P(x_1, ..., x_n) = Π_{i=1}^{n} (x_i.α_i + (1 - x_i).(1 - α_i))
 /// (often denoted as P(x) = eq(x, evals))
-pub fn eval_eq<F: Field>(eval: &[F]) -> Vec<F> {
+pub fn eval_eq<F: ExtensionField<PF<F>>>(eval: &[F]) -> Vec<F> {
+    eval_eq_scaled(eval, F::ONE)
+}
+
+pub fn eval_eq_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> Vec<F> {
     // Alloc memory without initializing it to zero.
     // This is safe because we overwrite it inside `eval_eq`.
     let mut out: Vec<F> = Vec::with_capacity(1 << eval.len());
@@ -24,15 +28,12 @@ pub fn eval_eq<F: Field>(eval: &[F]) -> Vec<F> {
     unsafe {
         out.set_len(1 << eval.len());
     }
-    compute_eval_eq::<_, _, false>(eval, &mut out, F::ONE);
+    compute_eval_eq::<PF<F>, F, false>(eval, &mut out, scalar);
     out
 }
 
 #[inline]
-pub fn compute_sparse_eval_eq<EF>(eval: &[EF], out: &mut [EF], scalar: EF)
-where
-    EF: ExtensionField<PF<EF>>,
-{
+pub fn compute_sparse_eval_eq<F: ExtensionField<PF<F>>>(eval: &[F], out: &mut [F], scalar: F) {
     let boolean_starts = eval
         .iter()
         .take_while(|&&x| x.is_zero() || x.is_one())
@@ -64,10 +65,10 @@ where
     let out = &mut out[starts_big_endian * new_out_size..(starts_big_endian + 1) * new_out_size];
 
     if boolean_ends.len() == 0 {
-        compute_eval_eq::<PF<EF>, EF, true>(eval, out, scalar);
+        compute_eval_eq::<PF<F>, F, true>(eval, out, scalar);
     } else {
-        let mut buff = unsafe { uninitialized_vec::<EF>(out.len() >> boolean_ends.len()) };
-        compute_eval_eq::<PF<EF>, EF, false>(
+        let mut buff = unsafe { uninitialized_vec::<F>(out.len() >> boolean_ends.len()) };
+        compute_eval_eq::<PF<F>, F, false>(
             &eval[..eval.len() - boolean_ends.len()],
             &mut buff,
             scalar,
