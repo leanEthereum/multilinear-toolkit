@@ -13,7 +13,7 @@ pub struct ProductComputation;
 impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
     for ProductComputation
 {
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
+    fn eval(&self, (point, _): (&[IF], &[EF]), _: &[EF]) -> EF {
         if TypeId::of::<IF>() == TypeId::of::<EF>() {
             let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
             unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
@@ -27,10 +27,14 @@ impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF,
 }
 
 impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComputation {
-    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_base(&self, _: (&[PFPacking<EF>], &[EFPacking<EF>]), _: &[EF]) -> EFPacking<EF> {
         unreachable!()
     }
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_extension(
+        &self,
+        (point, _): (&[EFPacking<EF>], &[EFPacking<EF>]),
+        _: &[EF],
+    ) -> EFPacking<EF> {
         unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
     }
     fn degree(&self) -> usize {
@@ -77,6 +81,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
             std::mem::take(&mut pol_a.as_owned_mut().unwrap()),
             std::mem::take(&mut pol_b.as_owned_mut().unwrap()),
         ]),
+        None,
         &ProductComputation,
         &ProductComputation,
         &[],

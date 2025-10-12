@@ -19,6 +19,16 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         }
     }
 
+    pub fn extend(&mut self, other: Self) {
+        match (self, other) {
+            (Self::Base(a), Self::Base(b)) => a.extend(b),
+            (Self::Extension(a), Self::Extension(b)) => a.extend(b),
+            (Self::BasePacked(a), Self::BasePacked(b)) => a.extend(b),
+            (Self::ExtensionPacked(a), Self::ExtensionPacked(b)) => a.extend(b),
+            _ => panic!("Cannot concat different types of MleGroupOwned"),
+        }
+    }
+
     pub fn as_extension_packed_mut(&mut self) -> Option<&mut Vec<Vec<EFPacking<EF>>>> {
         match self {
             Self::ExtensionPacked(e) => Some(e),

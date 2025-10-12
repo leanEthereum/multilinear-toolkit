@@ -9,7 +9,8 @@ use crate::*;
 #[allow(clippy::too_many_arguments)]
 pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
-    multilinears: M,
+    multilinears_1: M,
+    multilinears_2: Option<MleGroup<'a, EF>>,
     computation: &SC,
     computation_packed: &SCP,
     batching_scalars: &[EF],
@@ -24,11 +25,12 @@ where
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
-    let multilinears: MleGroup<'a, EF> = multilinears.into();
-    let n_rounds = multilinears.by_ref().n_vars() - skip + 1;
+    let multilinears_1: MleGroup<'a, EF> = multilinears_1.into();
+    let n_rounds = multilinears_1.by_ref().n_vars() - skip + 1;
     let (challenges, final_folds, final_sum) = sumcheck_prove_many_rounds(
         skip,
-        multilinears,
+        multilinears_1,
+        multilinears_2,
         computation,
         computation_packed,
         batching_scalars,
@@ -56,7 +58,8 @@ where
 #[allow(clippy::too_many_arguments)]
 pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
-    multilinears: M,
+    multilinears_1: M,
+    multilinears_2: Option<MleGroup<'a, EF>>,
     computation: &SC,
     computation_packed: &SCP,
     batching_scalars: &[EF],
@@ -72,39 +75,55 @@ where
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
-    let mut multilinears: MleGroup<'a, EF> = multilinears.into();
-    let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> = eq_factor.take().map(|(eq_point, eq_mle)| {
-        let eq_mle = eq_mle.unwrap_or_else(|| {
-            let eval_eq_ext = eval_eq(&eq_point[1..]);
-            if multilinears.by_ref().is_packed() {
-                MleOwned::ExtensionPacked(pack_extension(&eval_eq_ext))
-            } else {
-                MleOwned::Extension(eval_eq_ext)
-            }
-        });
-        (eq_point, eq_mle)
+    assert!(n_rounds >= 1);
+    let mut multilinears_1: MleGroup<'a, EF> = multilinears_1.into();
+    let mut multilinears_2: MleGroup<'a, EF> = multilinears_2.unwrap_or_else(|| {
+        if multilinears_1.by_ref().is_packed() {
+            MleGroup::Owned(MleGroupOwned::ExtensionPacked(vec![]))
+        } else {
+            MleGroup::Owned(MleGroupOwned::Extension(vec![]))
+        }
     });
-    let mut n_vars = multilinears.by_ref().n_vars();
+    let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> =
+        eq_factor.take().map(|(eq_point, eq_mle)| {
+            let eq_mle = eq_mle.unwrap_or_else(|| {
+                let eval_eq_ext = eval_eq(&eq_point[1..]);
+                if multilinears_1.by_ref().is_packed() {
+                    MleOwned::ExtensionPacked(pack_extension(&eval_eq_ext))
+                } else {
+                    MleOwned::Extension(eval_eq_ext)
+                }
+            });
+            (eq_point, eq_mle)
+        });
+    let mut n_vars = multilinears_1.by_ref().n_vars();
     if let Some((eq_point, eq_mle)) = &eq_factor {
         assert_eq!(eq_point.len(), n_vars - skip + 1);
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
-        assert_eq!(eq_mle.by_ref().is_packed(), multilinears.by_ref().is_packed());
+        assert_eq!(
+            eq_mle.by_ref().is_packed(),
+            multilinears_1.by_ref().is_packed()
+        );
     }
 
     let mut challenges = Vec::new();
     for _ in 0..n_rounds {
         // If Packing is enabled, and there are too little variables, we unpack everything:
-        if multilinears.by_ref().is_packed() && n_vars <= 1 + packing_log_width::<EF>() {
+        if multilinears_1.by_ref().is_packed() && n_vars <= 1 + packing_log_width::<EF>() {
             // unpack
-            multilinears = multilinears.by_ref().unpack().into();
+            multilinears_1 = multilinears_1.by_ref().unpack().into();
+            multilinears_2 = multilinears_2.by_ref().unpack().into();
             if let Some((_, eq_mle)) = &mut eq_factor {
-                *eq_mle = MleOwned::Extension(unpack_extension(eq_mle.by_ref().as_extension_packed().unwrap()));
+                *eq_mle = MleOwned::Extension(unpack_extension(
+                    eq_mle.by_ref().as_extension_packed().unwrap(),
+                ));
             }
         }
 
         let ps = compute_and_send_polynomial(
             skip,
-            &multilinears,
+            &multilinears_1,
+            &multilinears_2,
             computation,
             computation_packed,
             &eq_factor,
@@ -119,7 +138,8 @@ where
 
         on_challenge_received(
             skip,
-            &mut multilinears,
+            &mut multilinears_1,
+            &mut multilinears_2,
             &mut n_vars,
             &mut eq_factor,
             &mut sum,
@@ -131,13 +151,19 @@ where
         is_zerofier = false;
     }
 
-    (MultilinearPoint(challenges), multilinears, sum)
+    multilinears_1
+        .as_owned_mut()
+        .unwrap()
+        .extend(multilinears_2.as_owned().unwrap());
+
+    (MultilinearPoint(challenges), multilinears_1, sum)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn compute_and_send_polynomial<'a, EF, SC, SCP>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
-    multilinears: &MleGroup<'a, EF>,
+    multilinears_1: &MleGroup<'a, EF>,
+    multilinears_2: &MleGroup<'a, EF>,
     computation: &SC,
     computations_packed: &SCP,
     eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
@@ -178,7 +204,8 @@ where
         .collect::<Vec<Vec<PF<EF>>>>();
 
     p_evals.extend(sumcheck_compute(
-        &multilinears.by_ref(),
+        &multilinears_1.by_ref(),
+        &multilinears_2.by_ref(),
         SumcheckComputeParams {
             zs: &zs,
             skips,
@@ -237,7 +264,8 @@ where
 #[allow(clippy::too_many_arguments)]
 fn on_challenge_received<'a, EF>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
-    multilinears: &mut MleGroup<'a, EF>,
+    multilinears_1: &mut MleGroup<'a, EF>,
+    multilinears_2: &mut MleGroup<'a, EF>,
     n_vars: &mut usize,
     eq_factor: &mut Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     sum: &mut EF,
@@ -269,5 +297,6 @@ fn on_challenge_received<'a, EF>(
         eq_mle.truncate(eq_mle.by_ref().packed_len() / 2);
     }
 
-    multilinears.fold_in_large_field_in_place(&folding_scalars);
+    multilinears_1.fold_in_large_field_in_place(&folding_scalars);
+    multilinears_2.fold_in_large_field_in_place(&folding_scalars);
 }

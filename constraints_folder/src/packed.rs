@@ -5,7 +5,10 @@ use p3_matrix::dense::RowMajorMatrixView;
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: RowMajorMatrixView<'a, PFPacking<EF>>,
+    pub main: (
+        RowMajorMatrixView<'a, PFPacking<EF>>,
+        RowMajorMatrixView<'a, EFPacking<EF>>,
+    ),
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
@@ -15,30 +18,13 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
     type F = PFPacking<EF>;
     type Expr = PFPacking<EF>;
     type Var = PFPacking<EF>;
-    type M = RowMajorMatrixView<'a, PFPacking<EF>>;
+    type Var2 = EFPacking<EF>;
+    type M1 = RowMajorMatrixView<'a, PFPacking<EF>>;
+    type M2 = RowMajorMatrixView<'a, EFPacking<EF>>;
 
     #[inline]
-    fn main(&self) -> Self::M {
+    fn main(&self) -> (Self::M1, Self::M2) {
         self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    /// Returns an expression indicating rows where transition constraints should be checked.
-    ///
-    /// # Panics
-    /// This function panics if `size` is not `2`.
-    #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
     }
 
     #[inline]
@@ -49,22 +35,24 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
         self.constraint_index += 1;
     }
 
+    fn assert_zero_2(&mut self, x: Self::Var2) {
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += x * alpha_power;
+        self.constraint_index += 1;
+    }
+
     #[inline]
     fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _array: [I; N]) {
-        unreachable!();
-        // let expr_array = array.map(Into::into);
-        // self.accumulator += EFPacking::<EF>::from_basis_coefficients_fn(|i| {
-        //     let alpha_powers = &self.decomposed_alpha_powers[i]
-        //         [self.constraint_index..(self.constraint_index + N)];
-        //     PFPacking::<EF>::packed_linear_combination::<N>(alpha_powers, &expr_array)
-        // });
-        // self.constraint_index += N;
+        todo!();
     }
 }
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: RowMajorMatrixView<'a, EFPacking<EF>>,
+    pub main: (
+        RowMajorMatrixView<'a, EFPacking<EF>>,
+        RowMajorMatrixView<'a, EFPacking<EF>>,
+    ),
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
@@ -74,26 +62,13 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
     type F = PFPacking<EF>;
     type Expr = EFPacking<EF>;
     type Var = EFPacking<EF>;
-    type M = RowMajorMatrixView<'a, EFPacking<EF>>;
+    type Var2 = EFPacking<EF>;
+    type M1 = RowMajorMatrixView<'a, EFPacking<EF>>;
+    type M2 = RowMajorMatrixView<'a, EFPacking<EF>>;
 
     #[inline]
-    fn main(&self) -> Self::M {
+    fn main(&self) -> (Self::M1, Self::M2) {
         self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
     }
 
     #[inline]
@@ -104,8 +79,14 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
         self.constraint_index += 1;
     }
 
+    fn assert_zero_2(&mut self, x: Self::Var2) {
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += x * alpha_power;
+        self.constraint_index += 1;
+    }
+
     #[inline]
     fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _array: [I; N]) {
-        unreachable!();
+        todo!();
     }
 }

@@ -44,7 +44,7 @@ pub fn batch_fold_multilinears<
     mul_if_of: F,
 ) -> Vec<Vec<OF>> {
     polys
-        .iter()
+        .par_iter()
         .map(|poly| fold_multilinear(poly, scalars, &mul_if_of))
         .collect()
 }
@@ -54,7 +54,7 @@ pub fn batch_fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + 
     scalars: &[F],
 ) {
     polys
-        .iter_mut()
+        .par_iter_mut()
         .for_each(|poly| fold_multilinear_in_place(poly, scalars));
 }
 

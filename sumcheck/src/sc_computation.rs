@@ -14,7 +14,7 @@ use crate::compute_product_sumcheck_polynomial;
 
 pub trait SumcheckComputation<NF, EF>: Sync {
     fn degree(&self) -> usize;
-    fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF;
+    fn eval(&self, point: (&[NF], &[EF]), alpha_powers: &[EF]) -> EF;
 }
 
 impl<NF, EF, A> SumcheckComputation<NF, EF> for A
@@ -23,14 +23,19 @@ where
     EF: ExtensionField<NF> + ExtensionField<PF<EF>>,
     A: for<'a> Air<ConstraintFolder<'a, NF, EF>>,
 {
-    fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF {
+    fn eval(&self, point: (&[NF], &[EF]), alpha_powers: &[EF]) -> EF {
         if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
+            assert_eq!(point.0.len(), A::width_f(self) * 2);
+            assert_eq!(point.1.len(), A::width_ef(self) * 2);
         } else {
-            assert_eq!(point.len(), A::width(self));
-        }
+            assert_eq!(point.0.len(), A::width_f(self));
+            assert_eq!(point.1.len(), A::width_ef(self));
+        };
         let mut folder = ConstraintFolder {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: (
+                RowMajorMatrixView::new(point.0, A::width_f(self)),
+                RowMajorMatrixView::new(point.1, A::width_ef(self)),
+            ),
             alpha_powers,
             accumulator: EF::ZERO,
             constraint_index: 0,
@@ -47,8 +52,16 @@ pub trait SumcheckComputationPacked<EF>: Sync
 where
     EF: ExtensionField<PF<EF>>,
 {
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
+    fn eval_packed_base(
+        &self,
+        point: (&[PFPacking<EF>], &[EFPacking<EF>]),
+        alpha_powers: &[EF],
+    ) -> EFPacking<EF>;
+    fn eval_packed_extension(
+        &self,
+        point: (&[EFPacking<EF>], &[EFPacking<EF>]),
+        alpha_powers: &[EF],
+    ) -> EFPacking<EF>;
     fn degree(&self) -> usize;
 }
 
@@ -58,14 +71,23 @@ where
     A: for<'a> Air<ConstraintFolderPackedBase<'a, EF>>
         + for<'a> Air<ConstraintFolderPackedExtension<'a, EF>>,
 {
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_base(
+        &self,
+        point: (&[PFPacking<EF>], &[EFPacking<EF>]),
+        alpha_powers: &[EF],
+    ) -> EFPacking<EF> {
         if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
+            assert_eq!(point.0.len(), A::width_f(self) * 2);
+            assert_eq!(point.1.len(), A::width_ef(self) * 2);
         } else {
-            assert_eq!(point.len(), A::width(self));
-        }
+            assert_eq!(point.0.len(), A::width_f(self));
+            assert_eq!(point.1.len(), A::width_ef(self));
+        };
         let mut folder = ConstraintFolderPackedBase {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: (
+                RowMajorMatrixView::new(point.0, A::width_f(self)),
+                RowMajorMatrixView::new(point.1, A::width_ef(self)),
+            ),
             alpha_powers,
             accumulator: Default::default(),
             constraint_index: 0,
@@ -75,14 +97,23 @@ where
         folder.accumulator
     }
 
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_extension(
+        &self,
+        point: (&[EFPacking<EF>], &[EFPacking<EF>]),
+        alpha_powers: &[EF],
+    ) -> EFPacking<EF> {
         if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
+            assert_eq!(point.0.len(), A::width_f(self) * 2);
+            assert_eq!(point.1.len(), A::width_ef(self) * 2);
         } else {
-            assert_eq!(point.len(), A::width(self));
-        }
+            assert_eq!(point.0.len(), A::width_f(self));
+            assert_eq!(point.1.len(), A::width_ef(self));
+        };
         let mut folder = ConstraintFolderPackedExtension {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: (
+                RowMajorMatrixView::new(point.0, A::width_f(self)),
+                RowMajorMatrixView::new(point.1, A::width_ef(self)),
+            ),
             alpha_powers,
             accumulator: Default::default(),
             constraint_index: 0,
@@ -98,7 +129,8 @@ where
 }
 
 pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, SCP>(
-    group: &MleGroupRef<'a, EF>,
+    group_1: &MleGroupRef<'a, EF>,
+    group_2: &MleGroupRef<'a, EF>,
     params: SumcheckComputeParams<'a, EF, SC, SCP>,
 ) -> Vec<(PF<EF>, EF)>
 where
@@ -117,8 +149,8 @@ where
         sum,
     } = params;
 
-    let fold_size = 1 << (group.n_vars() - skips);
-    let packed_fold_size = if group.is_packed() {
+    let fold_size = 1 << (group_1.n_vars() - skips);
+    let packed_fold_size = if group_1.is_packed() {
         fold_size / packing_width::<EF>()
     } else {
         fold_size
@@ -128,9 +160,10 @@ where
     if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
         assert!(missing_mul_factor.is_none());
         assert!(batching_scalars.is_empty());
-        assert_eq!(group.n_columns(), 2);
+        assert_eq!(group_1.n_columns(), 2);
+        assert_eq!(group_2.n_columns(), 0);
 
-        let poly = match group {
+        let poly = match group_1 {
             MleGroupRef::Extension(multilinears) => {
                 compute_product_sumcheck_polynomial(&multilinears[0], &multilinears[1], sum, |e| {
                     vec![e]
@@ -143,17 +176,31 @@ where
             }
             _ => unimplemented!(),
         };
-        return vec![(PF::<EF>::ZERO, poly.coeffs[0]), (PF::<EF>::TWO, poly.evaluate(EF::TWO))];
+        return vec![
+            (PF::<EF>::ZERO, poly.coeffs[0]),
+            (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
+        ];
     }
 
-    match group {
-        MleGroupRef::ExtensionPacked(multilinears) => {
+    match group_1 {
+        MleGroupRef::ExtensionPacked(multilinears_1) => {
+            let MleGroupRef::ExtensionPacked(multilinears_2) = group_2 else {
+                unreachable!()
+            };
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
             let all_sums =
                 unsafe { uninitialized_vec::<EFPacking<EF>>(zs.len() * packed_fold_size) }; // sums for zs[0], sums for zs[1], ...
             (0..packed_fold_size).into_par_iter().for_each(|i| {
                 let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-                let rows = multilinears
+                let rows_1 = multilinears_1
+                    .iter()
+                    .map(|m| {
+                        (0..1 << skips)
+                            .map(|j| m[i + j * packed_fold_size])
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                let rows_2 = multilinears_2
                     .iter()
                     .map(|m| {
                         (0..1 << skips)
@@ -162,7 +209,16 @@ where
                     })
                     .collect::<Vec<_>>();
                 for (z_index, folding_scalars_z) in folding_scalars.iter().enumerate() {
-                    let point = rows
+                    let point_1 = rows_1
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_scalars_z.iter())
+                                .map(|(x, s)| *x * PFPacking::<EF>::from(*s))
+                                .sum::<EFPacking<EF>>()
+                        })
+                        .collect::<Vec<_>>();
+                    let point_2 = rows_2
                         .iter()
                         .map(|row| {
                             row.iter()
@@ -172,8 +228,8 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res =
-                        computation_packed.eval_packed_extension(&point, batching_scalars);
+                    let mut res = computation_packed
+                        .eval_packed_extension((&point_1, &point_2), batching_scalars);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -202,14 +258,25 @@ where
             }
             evals
         }
-        MleGroupRef::BasePacked(multilinears) => {
+        MleGroupRef::BasePacked(multilinears_1) => {
+            let MleGroupRef::ExtensionPacked(multilinears_2) = group_2 else {
+                unreachable!()
+            };
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
 
             let all_sums =
                 unsafe { uninitialized_vec::<EFPacking<EF>>(zs.len() * packed_fold_size) }; // sums for zs[0], sums for zs[1], ...
             (0..packed_fold_size).into_par_iter().for_each(|i| {
                 let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-                let rows = multilinears
+                let rows_1 = multilinears_1
+                    .iter()
+                    .map(|m| {
+                        (0..1 << skips)
+                            .map(|j| m[i + j * packed_fold_size])
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                let rows_2 = multilinears_2
                     .iter()
                     .map(|m| {
                         (0..1 << skips)
@@ -218,7 +285,7 @@ where
                     })
                     .collect::<Vec<_>>();
                 for (z_index, folding_scalars_z) in folding_scalars.iter().enumerate() {
-                    let point = rows
+                    let point_1 = rows_1
                         .iter()
                         .map(|row| {
                             row.iter()
@@ -227,8 +294,18 @@ where
                                 .sum::<PFPacking<EF>>()
                         })
                         .collect::<Vec<_>>();
+                    let point_2 = rows_2
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_scalars_z.iter())
+                                .map(|(x, s)| *x * PFPacking::<EF>::from(*s))
+                                .sum::<EFPacking<EF>>()
+                        })
+                        .collect::<Vec<_>>();
 
-                    let mut res = computation_packed.eval_packed_base(&point, batching_scalars);
+                    let mut res =
+                        computation_packed.eval_packed_base((&point_1, &point_2), batching_scalars);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -255,10 +332,14 @@ where
             }
             evals
         }
-        MleGroupRef::Base(multilinears) => {
+        MleGroupRef::Base(multilinears_1) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
+            let MleGroupRef::Extension(multilinears_2) = group_2 else {
+                unreachable!()
+            };
             sumcheck_compute_not_packed(
-                multilinears,
+                multilinears_1,
+                multilinears_2,
                 SumcheckComputeNotPackedParams {
                     zs,
                     skips,
@@ -271,10 +352,14 @@ where
                 },
             )
         }
-        MleGroupRef::Extension(multilinears) => {
+        MleGroupRef::Extension(multilinears_1) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
+            let MleGroupRef::Extension(multilinears_2) = group_2 else {
+                unreachable!()
+            };
             sumcheck_compute_not_packed(
-                multilinears,
+                multilinears_1,
+                multilinears_2,
                 SumcheckComputeNotPackedParams {
                     zs,
                     skips,
@@ -323,7 +408,8 @@ fn sumcheck_compute_not_packed<
     IF: ExtensionField<PF<EF>>,
     SC,
 >(
-    multilinears: &[&[IF]],
+    multilinears_1: &[&[IF]],
+    multilinears_2: &[&[EF]],
     params: SumcheckComputeNotPackedParams<'_, EF, SC>,
 ) -> Vec<(PF<EF>, EF)>
 where
@@ -343,7 +429,15 @@ where
     let all_sums = unsafe { uninitialized_vec::<EF>(zs.len() * fold_size) }; // sums for zs[0], sums for zs[1], ...
     (0..fold_size).into_par_iter().for_each(|i| {
         let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-        let rows = multilinears
+        let rows_1 = multilinears_1
+            .iter()
+            .map(|m| {
+                (0..1 << skips)
+                    .map(|j| m[i + j * fold_size])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+      let rows_2 = multilinears_2
             .iter()
             .map(|m| {
                 (0..1 << skips)
@@ -352,7 +446,7 @@ where
             })
             .collect::<Vec<_>>();
         for (z_index, folding_scalars_z) in folding_scalars.iter().enumerate() {
-            let point = rows
+            let point_1 = rows_1
                 .iter()
                 .map(|row| {
                     row.iter()
@@ -361,9 +455,18 @@ where
                         .sum::<IF>()
                 })
                 .collect::<Vec<_>>();
+                 let point_2 = rows_2
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_scalars_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EF>()
+                })
+                .collect::<Vec<_>>();
             unsafe {
                 let sum_ptr = all_sums.as_ptr() as *mut EF;
-                let mut res = computation.eval(&point, batching_scalars);
+                let mut res = computation.eval((&point_1, &point_2), batching_scalars);
                 if let Some(eq_mle_eval) = eq_mle_eval {
                     res *= eq_mle_eval;
                 }

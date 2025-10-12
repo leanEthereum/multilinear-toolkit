@@ -57,4 +57,11 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
             Self::Ref(_) => None,
         }
     }
+
+    pub fn as_owned_mut(&mut self) -> Option<&mut MleGroupOwned<EF>> {
+        match self {
+            Self::Owned(owned) => Some(owned),
+            Self::Ref(_) => None,
+        }
+    }
 }
