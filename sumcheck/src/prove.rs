@@ -73,22 +73,26 @@ where
     SCP: SumcheckComputationPacked<EF>,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
-    let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> = eq_factor.take().map(|(eq_point, eq_mle)| {
-        let eq_mle = eq_mle.unwrap_or_else(|| {
-            let eval_eq_ext = eval_eq(&eq_point[1..]);
-            if multilinears.by_ref().is_packed() {
-                MleOwned::ExtensionPacked(pack_extension(&eval_eq_ext))
-            } else {
-                MleOwned::Extension(eval_eq_ext)
-            }
+    let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> =
+        eq_factor.take().map(|(eq_point, eq_mle)| {
+            let eq_mle = eq_mle.unwrap_or_else(|| {
+                let eval_eq_ext = eval_eq(&eq_point[1..]);
+                if multilinears.by_ref().is_packed() {
+                    MleOwned::ExtensionPacked(pack_extension(&eval_eq_ext))
+                } else {
+                    MleOwned::Extension(eval_eq_ext)
+                }
+            });
+            (eq_point, eq_mle)
         });
-        (eq_point, eq_mle)
-    });
     let mut n_vars = multilinears.by_ref().n_vars();
     if let Some((eq_point, eq_mle)) = &eq_factor {
         assert_eq!(eq_point.len(), n_vars - skip + 1);
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
-        assert_eq!(eq_mle.by_ref().is_packed(), multilinears.by_ref().is_packed());
+        assert_eq!(
+            eq_mle.by_ref().is_packed(),
+            multilinears.by_ref().is_packed()
+        );
     }
 
     let mut challenges = Vec::new();
@@ -98,7 +102,9 @@ where
             // unpack
             multilinears = multilinears.by_ref().unpack().into();
             if let Some((_, eq_mle)) = &mut eq_factor {
-                *eq_mle = MleOwned::Extension(unpack_extension(eq_mle.by_ref().as_extension_packed().unwrap()));
+                *eq_mle = MleOwned::Extension(unpack_extension(
+                    eq_mle.by_ref().as_extension_packed().unwrap(),
+                ));
             }
         }
 
@@ -183,6 +189,9 @@ where
             zs: &zs,
             skips,
             eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
+            first_eq_factor: eq_factor
+                .as_ref()
+                .map(|(first_eq_factor, _)| first_eq_factor[0]),
             folding_scalars: &folding_scalars,
             computation,
             computation_packed: computations_packed,
