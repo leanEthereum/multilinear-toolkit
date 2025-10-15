@@ -42,15 +42,6 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
         }
     }
 
-    pub fn fold_in_large_field_in_place(&mut self, scalars: &[EF]) {
-        match self {
-            Self::Owned(owned) => owned.fold_in_large_field_in_place(scalars),
-            Self::Ref(_) => {
-                *self = self.by_ref().fold(scalars).into();
-            }
-        }
-    }
-
     pub fn as_owned(self) -> Option<MleGroupOwned<EF>> {
         match self {
             Self::Owned(owned) => Some(owned),

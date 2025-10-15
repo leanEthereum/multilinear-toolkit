@@ -66,7 +66,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut sum: EF,
     mut missing_mul_factors: Option<EF>,
     n_rounds: usize,
-) -> (MultilinearPoint<EF>, MleGroup<'a, EF>, EF)
+) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
@@ -123,21 +123,22 @@ where
         let challenge = prover_state.sample();
         challenges.push(challenge);
 
-        on_challenge_received(
+        multilinears = on_challenge_received(
             skip,
-            &mut multilinears,
+            &multilinears.by_ref(),
             &mut n_vars,
             &mut eq_factor,
             &mut sum,
             &mut missing_mul_factors,
             challenge,
             &ps,
-        );
+        )
+        .into();
         skip = 1;
         is_zerofier = false;
     }
 
-    (MultilinearPoint(challenges), multilinears, sum)
+    (MultilinearPoint(challenges), multilinears.as_owned().unwrap(), sum)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -246,14 +247,15 @@ where
 #[allow(clippy::too_many_arguments)]
 fn on_challenge_received<'a, EF>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
-    multilinears: &mut MleGroup<'a, EF>,
+    multilinears: &MleGroupRef<'a, EF>,
     n_vars: &mut usize,
     eq_factor: &mut Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     sum: &mut EF,
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
     p: &DensePolynomial<EF>,
-) where
+) -> MleGroupOwned<EF>
+where
     EF: ExtensionField<PF<EF>>,
 {
     *sum = p.evaluate(challenge);
@@ -278,5 +280,5 @@ fn on_challenge_received<'a, EF>(
         eq_mle.truncate(eq_mle.by_ref().packed_len() / 2);
     }
 
-    multilinears.fold_in_large_field_in_place(&folding_scalars);
+    multilinears.fold(&folding_scalars)
 }

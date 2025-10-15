@@ -134,4 +134,21 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
             }
         }
     }
+
+    pub fn merge(mles: &'a [&'a MleRef<'a, EF>]) -> Self {
+        match &mles[0] {
+            MleRef::Base(_) => Self::Base(mles.iter().map(|m| m.as_base().unwrap()).collect()),
+            MleRef::Extension(_) => {
+                Self::Extension(mles.iter().map(|m| m.as_extension().unwrap()).collect())
+            }
+            MleRef::BasePacked(_) => {
+                Self::BasePacked(mles.iter().map(|m| m.as_packed_base().unwrap()).collect())
+            }
+            MleRef::ExtensionPacked(_) => Self::ExtensionPacked(
+                mles.iter()
+                    .map(|m| m.as_extension_packed().unwrap())
+                    .collect(),
+            ),
+        }
+    }
 }

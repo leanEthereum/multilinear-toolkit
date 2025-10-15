@@ -59,26 +59,6 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         }
     }
 
-    pub fn fold_in_large_field_in_place(&mut self, scalars: &[EF]) {
-        match self {
-            Self::Base(_) | Self::BasePacked(_) => {
-                *self = self.by_ref().fold(scalars);
-            }
-            Self::Extension(pols) => {
-                batch_fold_multilinear_in_place(
-                    &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
-                    scalars,
-                );
-            }
-            Self::ExtensionPacked(pols) => {
-                batch_fold_multilinear_in_place(
-                    &mut pols.iter_mut().map(|p| p.as_mut()).collect::<Vec<_>>(),
-                    scalars,
-                );
-            }
-        }
-    }
-
     pub fn split(self) -> Vec<MleOwned<EF>> {
         match self {
             Self::Base(v) => v.into_iter().map(|col| MleOwned::Base(col)).collect(),
