@@ -186,7 +186,6 @@ where
     p_evals.extend(sumcheck_compute(
         &multilinears.by_ref(),
         SumcheckComputeParams {
-            zs: &zs,
             skips,
             eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
             first_eq_factor: eq_factor
@@ -199,6 +198,7 @@ where
             missing_mul_factor,
             sum,
         },
+        &zs,
     ));
 
     if !is_zerofier {
