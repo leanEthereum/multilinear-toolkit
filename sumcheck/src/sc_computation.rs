@@ -10,6 +10,7 @@ use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use rayon::prelude::*;
 use std::any::TypeId;
+use std::ops::Mul;
 
 use crate::ProductComputation;
 use crate::compute_product_sumcheck_polynomial;
@@ -199,7 +200,7 @@ where
     match group {
         MleGroupRef::ExtensionPacked(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-            sumcheck_compute_extension_packed(
+            sumcheck_compute_packed::<EF, EFPacking<EF>, _>(
                 multilinears,
                 zs,
                 skips,
@@ -213,7 +214,7 @@ where
         }
         MleGroupRef::BasePacked(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-            sumcheck_compute_base_packed(
+            sumcheck_compute_packed::<EF, PFPacking<EF>, _>(
                 multilinears,
                 zs,
                 skips,
@@ -300,24 +301,26 @@ where
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            (0..n).map(|z_index| {
-                let folding_scalars_z = &folding_scalars[z_index];
-                let point = rows
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .zip(folding_scalars_z.iter())
-                            .map(|(x, s)| *x * *s)
-                            .sum::<IF>()
-                    })
-                    .collect::<Vec<_>>();
+            (0..n)
+                .map(|z_index| {
+                    let folding_scalars_z = &folding_scalars[z_index];
+                    let point = rows
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_scalars_z.iter())
+                                .map(|(x, s)| *x * *s)
+                                .sum::<IF>()
+                        })
+                        .collect::<Vec<_>>();
 
-                let mut res = computation.eval(&point, batching_scalars);
-                if let Some(eq_mle_eval) = eq_mle_eval {
-                    res *= eq_mle_eval;
-                }
-                res
-            }).collect::<Vec<_>>()
+                    let mut res = computation.eval(&point, batching_scalars);
+                    if let Some(eq_mle_eval) = eq_mle_eval {
+                        res *= eq_mle_eval;
+                    }
+                    res
+                })
+                .collect::<Vec<_>>()
         })
         .reduce(
             || vec![EF::ZERO; n],
@@ -339,12 +342,12 @@ where
     evals
 }
 
-fn sumcheck_compute_extension_packed<
-    EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
-    IF: ExtensionField<PF<EF>>,
+fn sumcheck_compute_packed<
+    EF: ExtensionField<PF<EF>>, // extension field
+    WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
     SCP: SumcheckComputationPacked<EF>,
 >(
-    multilinears: &[&[EFPacking<EF>]],
+    multilinears: &[&[WPF]],
     zs: &[usize],
     skips: usize,
     eq_mle: Option<&[EFPacking<EF>]>,
@@ -385,86 +388,24 @@ fn sumcheck_compute_extension_packed<
                             row.iter()
                                 .zip(folding_scalars_z.iter())
                                 .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
+                                .sum::<WPF>()
                         })
                         .collect::<Vec<_>>();
-
-                    let mut res =
-                        computation_packed.eval_packed_extension(&point, batching_scalars);
+                    let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
+                        let point =
+                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point) };
+                        computation_packed.eval_packed_base(&point, batching_scalars)
+                    } else {
+                        let point =
+                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point) };
+                        computation_packed.eval_packed_extension(&point, batching_scalars)
+                    };
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
                     res
                 })
                 .collect::<Vec<_>>()
-        })
-        .reduce(
-            || vec![EFPacking::<EF>::ZERO; n],
-            |mut acc, sums| {
-                sums.into_iter().enumerate().for_each(|(i, sum)| {
-                    acc[i] += sum;
-                });
-                acc
-            },
-        );
-
-    let mut evals = vec![];
-    for (z_index, z) in zs.iter().enumerate() {
-        let mut sum_z = EFPacking::<EF>::to_ext_iter([sum_zs_packed[z_index]]).sum::<EF>();
-        if let Some(missing_mul_factor) = missing_mul_factor {
-            sum_z *= missing_mul_factor;
-        }
-        evals.push((PF::<EF>::from_usize(*z), sum_z));
-    }
-    evals
-}
-
-fn sumcheck_compute_base_packed<
-    EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
-    IF: ExtensionField<PF<EF>>,
-    SCP: SumcheckComputationPacked<EF>,
->(
-    multilinears: &[&[PFPacking<EF>]],
-    zs: &[usize],
-    skips: usize,
-    eq_mle: Option<&[EFPacking<EF>]>,
-    folding_scalars: &[Vec<PF<EF>>],
-    computation_packed: &SCP,
-    batching_scalars: &[EF],
-    missing_mul_factor: Option<EF>,
-    packed_fold_size: usize,
-) -> Vec<(PF<EF>, EF)> {
-    let n = zs.len();
-    let sum_zs_packed = (0..packed_fold_size)
-        .into_par_iter()
-        .map(|i| {
-            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-            let rows = multilinears
-                .iter()
-                .map(|m| {
-                    (0..1 << skips)
-                        .map(|j| m[i + j * packed_fold_size])
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            (0..n).map(|z_index| {
-                let folding_scalars_z = &folding_scalars[z_index];
-                let point = rows
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .zip(folding_scalars_z.iter())
-                            .map(|(x, s)| *x * *s)
-                            .sum::<PFPacking<EF>>()
-                    })
-                    .collect::<Vec<_>>();
-
-                let mut res = computation_packed.eval_packed_base(&point, batching_scalars);
-                if let Some(eq_mle_eval) = eq_mle_eval {
-                    res *= eq_mle_eval;
-                }
-                res
-            }).collect::<Vec<_>>()
         })
         .reduce(
             || vec![EFPacking::<EF>::ZERO; n],
