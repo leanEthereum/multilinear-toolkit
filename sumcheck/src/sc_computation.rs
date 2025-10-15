@@ -10,7 +10,6 @@ use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use rayon::prelude::*;
 use std::any::TypeId;
-use std::array;
 
 use crate::ProductComputation;
 use crate::compute_product_sumcheck_polynomial;
@@ -104,37 +103,6 @@ pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, SCP>(
     group: &MleGroupRef<'a, EF>,
     params: SumcheckComputeParams<'a, EF, SC, SCP>,
     zs: &[usize],
-) -> Vec<(PF<EF>, EF)>
-where
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
-{
-    match zs.len() {
-        1 => sumcheck_compute_const(group, params, &array::from_fn::<_, 1, _>(|i| zs[i])),
-        2 => sumcheck_compute_const(group, params, &array::from_fn::<_, 2, _>(|i| zs[i])),
-        3 => sumcheck_compute_const(group, params, &array::from_fn::<_, 3, _>(|i| zs[i])),
-        4 => sumcheck_compute_const(group, params, &array::from_fn::<_, 4, _>(|i| zs[i])),
-        5 => sumcheck_compute_const(group, params, &array::from_fn::<_, 5, _>(|i| zs[i])),
-        6 => sumcheck_compute_const(group, params, &array::from_fn::<_, 6, _>(|i| zs[i])),
-        7 => sumcheck_compute_const(group, params, &array::from_fn::<_, 7, _>(|i| zs[i])),
-        8 => sumcheck_compute_const(group, params, &array::from_fn::<_, 8, _>(|i| zs[i])),
-        9 => sumcheck_compute_const(group, params, &array::from_fn::<_, 9, _>(|i| zs[i])),
-        10 => sumcheck_compute_const(group, params, &array::from_fn::<_, 10, _>(|i| zs[i])),
-        28 => sumcheck_compute_const(group, params, &array::from_fn::<_, 28, _>(|i| zs[i])),
-        56 => sumcheck_compute_const(group, params, &array::from_fn::<_, 56, _>(|i| zs[i])),
-        63 => sumcheck_compute_const(group, params, &array::from_fn::<_, 63, _>(|i| zs[i])),
-        120 => sumcheck_compute_const(group, params, &array::from_fn::<_, 120, _>(|i| zs[i])),
-        135 => sumcheck_compute_const(group, params, &array::from_fn::<_, 135, _>(|i| zs[i])),
-        _ => unimplemented!(
-            "sumcheck_compute does not currently support {} points (simply add this case)",
-            zs.len()
-        ),
-    }
-}
-pub fn sumcheck_compute_const<'a, EF: ExtensionField<PF<EF>>, SC, SCP, const N: usize>(
-    group: &MleGroupRef<'a, EF>,
-    params: SumcheckComputeParams<'a, EF, SC, SCP>,
-    zs: &[usize; N],
 ) -> Vec<(PF<EF>, EF)>
 where
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
@@ -305,10 +273,9 @@ fn sumcheck_compute_not_packed<
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>>,
     SC,
-    const N: usize,
 >(
     multilinears: &[&[IF]],
-    zs: &[usize; N],
+    zs: &[usize],
     skips: usize,
     eq_mle: Option<&[EF]>,
     folding_scalars: &[Vec<PF<EF>>],
@@ -320,6 +287,7 @@ fn sumcheck_compute_not_packed<
 where
     SC: SumcheckComputation<IF, EF>,
 {
+    let n = zs.len();
     let sum_zs_packed = (0..fold_size)
         .into_par_iter()
         .map(|i| {
@@ -332,7 +300,7 @@ where
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            array::from_fn::<_, N, _>(|z_index| {
+            (0..n).map(|z_index| {
                 let folding_scalars_z = &folding_scalars[z_index];
                 let point = rows
                     .iter()
@@ -349,14 +317,14 @@ where
                     res *= eq_mle_eval;
                 }
                 res
-            })
+            }).collect::<Vec<_>>()
         })
         .reduce(
-            || [EF::ZERO; N],
+            || vec![EF::ZERO; n],
             |mut acc, sums| {
-                for i in 0..N {
-                    acc[i] += sums[i];
-                }
+                sums.into_iter().enumerate().for_each(|(i, sum)| {
+                    acc[i] += sum;
+                });
                 acc
             },
         );
@@ -375,10 +343,9 @@ fn sumcheck_compute_extension_packed<
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>>,
     SCP: SumcheckComputationPacked<EF>,
-    const N: usize,
 >(
     multilinears: &[&[EFPacking<EF>]],
-    zs: &[usize; N],
+    zs: &[usize],
     skips: usize,
     eq_mle: Option<&[EFPacking<EF>]>,
     folding_scalars: &[Vec<PF<EF>>],
@@ -387,6 +354,7 @@ fn sumcheck_compute_extension_packed<
     missing_mul_factor: Option<EF>,
     packed_fold_size: usize,
 ) -> Vec<(PF<EF>, EF)> {
+    let n = zs.len();
     let folding_scalars = folding_scalars
         .iter()
         .map(|scalars| {
@@ -408,31 +376,34 @@ fn sumcheck_compute_extension_packed<
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            array::from_fn::<_, N, _>(|z_index| {
-                let folding_scalars_z = &folding_scalars[z_index];
-                let point = rows
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .zip(folding_scalars_z.iter())
-                            .map(|(x, s)| *x * *s)
-                            .sum::<EFPacking<EF>>()
-                    })
-                    .collect::<Vec<_>>();
+            (0..n)
+                .map(|z_index| {
+                    let folding_scalars_z = &folding_scalars[z_index];
+                    let point = rows
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_scalars_z.iter())
+                                .map(|(x, s)| *x * *s)
+                                .sum::<EFPacking<EF>>()
+                        })
+                        .collect::<Vec<_>>();
 
-                let mut res = computation_packed.eval_packed_extension(&point, batching_scalars);
-                if let Some(eq_mle_eval) = eq_mle_eval {
-                    res *= eq_mle_eval;
-                }
-                res
-            })
+                    let mut res =
+                        computation_packed.eval_packed_extension(&point, batching_scalars);
+                    if let Some(eq_mle_eval) = eq_mle_eval {
+                        res *= eq_mle_eval;
+                    }
+                    res
+                })
+                .collect::<Vec<_>>()
         })
         .reduce(
-            || [EFPacking::<EF>::ZERO; N],
+            || vec![EFPacking::<EF>::ZERO; n],
             |mut acc, sums| {
-                for i in 0..N {
-                    acc[i] += sums[i];
-                }
+                sums.into_iter().enumerate().for_each(|(i, sum)| {
+                    acc[i] += sum;
+                });
                 acc
             },
         );
@@ -452,10 +423,9 @@ fn sumcheck_compute_base_packed<
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>>,
     SCP: SumcheckComputationPacked<EF>,
-    const N: usize,
 >(
     multilinears: &[&[PFPacking<EF>]],
-    zs: &[usize; N],
+    zs: &[usize],
     skips: usize,
     eq_mle: Option<&[EFPacking<EF>]>,
     folding_scalars: &[Vec<PF<EF>>],
@@ -464,6 +434,7 @@ fn sumcheck_compute_base_packed<
     missing_mul_factor: Option<EF>,
     packed_fold_size: usize,
 ) -> Vec<(PF<EF>, EF)> {
+    let n = zs.len();
     let sum_zs_packed = (0..packed_fold_size)
         .into_par_iter()
         .map(|i| {
@@ -476,7 +447,7 @@ fn sumcheck_compute_base_packed<
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            array::from_fn::<_, N, _>(|z_index| {
+            (0..n).map(|z_index| {
                 let folding_scalars_z = &folding_scalars[z_index];
                 let point = rows
                     .iter()
@@ -493,14 +464,14 @@ fn sumcheck_compute_base_packed<
                     res *= eq_mle_eval;
                 }
                 res
-            })
+            }).collect::<Vec<_>>()
         })
         .reduce(
-            || [EFPacking::<EF>::ZERO; N],
+            || vec![EFPacking::<EF>::ZERO; n],
             |mut acc, sums| {
-                for i in 0..N {
-                    acc[i] += sums[i];
-                }
+                sums.into_iter().enumerate().for_each(|(i, sum)| {
+                    acc[i] += sum;
+                });
                 acc
             },
         );
