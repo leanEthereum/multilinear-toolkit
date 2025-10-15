@@ -49,46 +49,6 @@ pub fn batch_fold_multilinears<
         .collect()
 }
 
-pub fn batch_fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + Copy>(
-    polys: &mut [&mut Vec<NF>],
-    scalars: &[F],
-) {
-    polys
-        .par_iter_mut()
-        .for_each(|poly| fold_multilinear_in_place(poly, scalars));
-}
-
-pub fn fold_multilinear_in_place<F: Field, NF: Algebra<F> + Sync + Send + Copy>(
-    m: &mut Vec<NF>,
-    scalars: &[F],
-) {
-    assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
-    let new_size = m.len() / scalars.len();
-    let (left, right) = m.split_at_mut(new_size);
-
-    if scalars.len() == 2 {
-        assert_eq!(scalars[0], F::ONE - scalars[1]);
-        let alpha = scalars[1];
-        left.par_iter_mut().enumerate().for_each(|(i, out)| {
-            let s = (right[i] - *out) * alpha + *out;
-            *out = s;
-        });
-    } else {
-        left.par_iter_mut().enumerate().for_each(|(i, out)| {
-            let s = *out * scalars[0]
-                + scalars
-                    .iter()
-                    .skip(1)
-                    .enumerate()
-                    .map(|(j, s)| right[j * new_size + i] * *s) // only reads
-                    .sum::<NF>();
-            *out = s;
-        });
-    }
-
-    m.truncate(new_size);
-}
-
 pub fn fold_multilinear<
     EF: PrimeCharacteristicRing + Copy + Send + Sync,
     IF: Copy + Sub<Output = IF> + Send + Sync,

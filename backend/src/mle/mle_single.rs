@@ -8,6 +8,18 @@ pub enum Mle<'a, EF: ExtensionField<PF<EF>>> {
     Ref(MleRef<'a, EF>),
 }
 
+impl<EF: ExtensionField<PF<EF>>> From<MleOwned<EF>> for Mle<'_, EF> {
+    fn from(value: MleOwned<EF>) -> Self {
+        Self::Owned(value)
+    }
+}
+
+impl<'a, EF: ExtensionField<PF<EF>>> From<MleRef<'a, EF>> for Mle<'a, EF> {
+    fn from(value: MleRef<'a, EF>) -> Self {
+        Self::Ref(value)
+    }
+}
+
 impl<'a, EF: ExtensionField<PF<EF>>> Mle<'a, EF> {
     pub fn by_ref(&'a self) -> MleRef<'a, EF> {
         match self {
@@ -38,65 +50,6 @@ impl<'a, EF: ExtensionField<PF<EF>>> Mle<'a, EF> {
         match self {
             Self::Owned(poly) => poly.pack(),
             Self::Ref(poly) => poly.pack(),
-        }
-    }
-
-    pub fn fold_in_place(&mut self, weights: &[EF]) {
-        match self {
-            Self::Owned(owned) => match owned {
-                MleOwned::Base(v) => {
-                    *self = Mle::Owned(MleOwned::Extension(fold_multilinear(
-                        v,
-                        weights,
-                        &|a, b| b * a,
-                    )))
-                }
-                MleOwned::Extension(v) => fold_multilinear_in_place(v, weights),
-                MleOwned::BasePacked(v) => {
-                    *self = Mle::Owned(MleOwned::ExtensionPacked(fold_multilinear(
-                        v,
-                        &weights
-                            .iter()
-                            .map(|&w| EFPacking::<EF>::from(w))
-                            .collect::<Vec<_>>(),
-                        &|a, b| b * a,
-                    )))
-                }
-                MleOwned::ExtensionPacked(v) => fold_multilinear_in_place(v, weights),
-            },
-            Self::Ref(poly) => match poly {
-                MleRef::Base(v) => {
-                    *self = Mle::Owned(MleOwned::Extension(fold_multilinear(
-                        v,
-                        weights,
-                        &|a, b| b * a,
-                    )))
-                }
-                MleRef::Extension(v) => {
-                    *self = Mle::Owned(MleOwned::Extension(fold_multilinear(
-                        v,
-                        weights,
-                        &|a, b| b * a,
-                    )))
-                }
-                MleRef::BasePacked(v) => {
-                    *self = Mle::Owned(MleOwned::ExtensionPacked(fold_multilinear(
-                        v,
-                        &weights
-                            .iter()
-                            .map(|&w| EFPacking::<EF>::from(w))
-                            .collect::<Vec<_>>(),
-                        &|a, b| b * a,
-                    )))
-                }
-                MleRef::ExtensionPacked(v) => {
-                    *self = Mle::Owned(MleOwned::ExtensionPacked(fold_multilinear(
-                        v,
-                        weights,
-                        &|a, b| a * b,
-                    )))
-                }
-            },
         }
     }
 }
