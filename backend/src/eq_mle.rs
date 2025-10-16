@@ -23,12 +23,20 @@ pub fn eval_eq<F: ExtensionField<PF<F>>>(eval: &[F]) -> Vec<F> {
 pub fn eval_eq_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> Vec<F> {
     // Alloc memory without initializing it to zero.
     // This is safe because we overwrite it inside `eval_eq`.
-    let mut out: Vec<F> = Vec::with_capacity(1 << eval.len());
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        out.set_len(1 << eval.len());
-    }
+    let mut out = unsafe { uninitialized_vec(1 << eval.len()) };
     compute_eval_eq::<PF<F>, F, false>(eval, &mut out, scalar);
+    out
+}
+
+pub fn eval_eq_packed<F: ExtensionField<PF<F>>>(eval: &[F]) -> Vec<EFPacking<F>> {
+    eval_eq_packed_scaled(eval, F::ONE)
+}
+
+pub fn eval_eq_packed_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) -> Vec<EFPacking<F>> {
+    // Alloc memory without initializing it to zero.
+    // This is safe because we overwrite it inside `eval_eq`.
+    let mut out = unsafe { uninitialized_vec(1 << (eval.len() - packing_log_width::<F>())) };
+    compute_eval_eq_packed::<F, false>(eval, &mut out, scalar);
     out
 }
 
@@ -201,7 +209,7 @@ where
         out.par_chunks_exact_mut(out_chunk_size)
             .zip(parallel_buffer.par_iter())
             .for_each(|(out_chunk, buffer_val)| {
-                eval_eq_packed::<_, _, INITIALIZED>(
+                eval_eq_with_packed_scalar::<_, _, INITIALIZED>(
                     &eval[LOG_NUM_THREADS..(eval.len() - log_packing_width)],
                     out_chunk,
                     *buffer_val,
@@ -758,7 +766,7 @@ where
 /// It then updates the output buffer `out` with the computed values by adding them in.
 #[allow(clippy::too_many_lines)]
 #[inline]
-fn eval_eq_packed<F: Field, EF: ExtensionField<F>, const INITIALIZED: bool>(
+fn eval_eq_with_packed_scalar<F: Field, EF: ExtensionField<F>, const INITIALIZED: bool>(
     eval: &[EF],
     out: &mut [EF],
     scalar: EF::ExtensionPacking,
@@ -833,8 +841,8 @@ fn eval_eq_packed<F: Field, EF: ExtensionField<F>, const INITIALIZED: bool>(
 
             // The recursive approach turns out to be faster than the iterative one here.
             // Probably related to nice cache locality.
-            eval_eq_packed::<_, _, INITIALIZED>(tail, low, s0);
-            eval_eq_packed::<_, _, INITIALIZED>(tail, high, s1);
+            eval_eq_with_packed_scalar::<_, _, INITIALIZED>(tail, low, s0);
+            eval_eq_with_packed_scalar::<_, _, INITIALIZED>(tail, high, s1);
         }
     }
 }
