@@ -86,26 +86,4 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
             Self::ExtensionPacked(_) => Mle::Ref(self.clone()),
         }
     }
-
-    pub fn fold(&self, weights: &[EF]) -> MleOwned<EF> {
-        match self {
-            MleRef::Base(v) => MleOwned::Extension(fold_multilinear(v, weights, &|a, b| b * a)),
-            MleRef::Extension(v) => {
-                MleOwned::Extension(fold_multilinear(v, weights, &|a, b| b * a))
-            }
-            MleRef::BasePacked(v) => MleOwned::ExtensionPacked(fold_multilinear(
-                v,
-                &weights
-                    .iter()
-                    .map(|&w| EFPacking::<EF>::from(w))
-                    .collect::<Vec<_>>(),
-                &|a, b| b * a,
-            )),
-            MleRef::ExtensionPacked(v) => {
-                MleOwned::ExtensionPacked(fold_multilinear(v, weights, &|a, b| a * b))
-            }
-        }
-    }
-
-    
 }

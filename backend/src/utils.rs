@@ -1,11 +1,12 @@
-use std::{
-    iter::Sum,
-    ops::{Add, Sub},
-};
+use std::{iter::Sum, ops::{Add, Sub}};
 
 use fiat_shamir::*;
 use p3_field::*;
-use rayon::prelude::*;
+use rayon::{
+    iter::Zip,
+    prelude::*,
+    slice::{Iter, IterMut},
+};
 
 pub fn pack_extension<EF: ExtensionField<PF<EF>>>(slice: &[EF]) -> Vec<EFPacking<EF>> {
     slice
@@ -32,6 +33,7 @@ pub const fn packing_log_width<EF: Field>() -> usize {
 pub const fn packing_width<EF: Field>() -> usize {
     PFPacking::<EF>::WIDTH
 }
+
 
 pub fn batch_fold_multilinears<
     EF: PrimeCharacteristicRing + Copy + Send + Sync,
@@ -190,6 +192,38 @@ pub fn split_at_mut_many<'a, A>(slice: &'a mut [A], indices: &[usize]) -> Vec<&'
     result.push(current_slice);
 
     result
+}
+
+pub fn par_iter_zip_quarters<F: Sync + Send>(
+    u: &[F],
+) -> Zip<Zip<Iter<'_, F>, Iter<'_, F>>, Zip<Iter<'_, F>, Iter<'_, F>>> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    let [u_ll, u_lr, u_rl, u_rr] = split_at_many(u, &[n / 4, n / 2, 3 * n / 4])
+        .try_into()
+        .ok()
+        .unwrap();
+    (u_ll.par_iter().zip(u_lr)).zip(u_rl.par_iter().zip(u_rr.par_iter()))
+}
+
+pub fn zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
+    u: &'a [A],
+    folded: &'b mut [B],
+) -> Zip<
+    Zip<Zip<Iter<'a, A>, Iter<'a, A>>, Zip<Iter<'a, A>, Iter<'a, A>>>,
+    Zip<IterMut<'b, B>, IterMut<'b, B>>,
+> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    assert_eq!(folded.len(), n / 2);
+    let (folded_left, folded_right) = folded.split_at_mut(n / 4);
+    let [u_ll, u_lr, u_rl, u_rr] = split_at_many(u, &[n / 4, n / 2, 3 * n / 4])
+        .try_into()
+        .ok()
+        .unwrap();
+    (u_ll.par_iter().zip(u_lr))
+        .zip(u_rl.par_iter().zip(u_rr.par_iter()))
+        .zip((folded_left.par_iter_mut()).zip(folded_right.par_iter_mut()))
 }
 
 // pub fn convert_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {

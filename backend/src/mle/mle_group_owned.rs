@@ -26,6 +26,10 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         }
     }
 
+    pub fn is_packed(&self) -> bool {
+        matches!(self, Self::BasePacked(_) | Self::ExtensionPacked(_))
+    }
+
     pub fn by_ref<'a>(&'a self) -> MleGroupRef<'a, EF> {
         match self {
             Self::Base(base) => MleGroupRef::Base(base.iter().map(|v| v.as_slice()).collect()),

@@ -1,6 +1,9 @@
 use std::any::TypeId;
 
-use backend::{DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint};
+use backend::{
+    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, uninitialized_vec,
+    zip_fold_2,
+};
 use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
@@ -39,14 +42,14 @@ impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComput
 }
 
 pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
-    pol_a: &MleRef<'_, EF>,
-    pol_b: &MleRef<'_, EF>,
+    pol_a: &MleRef<'_, EF>, // evals
+    pol_b: &MleRef<'_, EF>, // weights
     prover_state: &mut ProverState<PF<EF>, EF, impl FSChallenger<EF>>,
     mut sum: EF,
     n_rounds: usize,
 ) -> (MultilinearPoint<EF>, EF, MleOwned<EF>, MleOwned<EF>) {
     assert!(n_rounds >= 1);
-    let sumcheck_poly = match (pol_a, pol_b) {
+    let first_sumcheck_poly = match (pol_a, pol_b) {
         (MleRef::BasePacked(evals), MleRef::ExtensionPacked(weights)) => {
             compute_product_sumcheck_polynomial(&evals, &weights, sum, |e| {
                 EFPacking::<EF>::to_ext_iter([e]).collect()
@@ -59,21 +62,39 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         }
         _ => unimplemented!(),
     };
-    prover_state.add_extension_scalars(&sumcheck_poly.coeffs);
 
+    prover_state.add_extension_scalars(&first_sumcheck_poly.coeffs);
     // TODO: re-enable PoW grinding
-    // prover_state.pow_grinding(pow_bits);
+    let r1: EF = prover_state.sample();
+    sum = first_sumcheck_poly.evaluate(r1);
 
-    let r: EF = prover_state.sample();
+    if n_rounds < 2 {
+        unimplemented!()
+    }
 
-    let pol_a = pol_a.fold(&[(EF::ONE - r), r]);
-    let pol_b = pol_b.fold(&[(EF::ONE - r), r]);
+    let (second_sumcheck_poly, [folded_pol_a, folded_pol_b]) = match (pol_a, pol_b) {
+        (MleRef::BasePacked(evals), MleRef::ExtensionPacked(weights)) => {
+            fold_and_compute_product_sumcheck_polynomial(&evals, &weights, r1, sum, |e| {
+                EFPacking::<EF>::to_ext_iter([e]).collect()
+            })
+        }
+        (MleRef::ExtensionPacked(evals), MleRef::ExtensionPacked(weights)) => {
+            fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| {
+                EFPacking::<EF>::to_ext_iter([e]).collect()
+            })
+        }
+        _ => unimplemented!(),
+    };
 
-    sum = sumcheck_poly.evaluate(r);
+    prover_state.add_extension_scalars(&second_sumcheck_poly.coeffs);
+    // TODO: re-enable PoW grinding
+    let r2: EF = prover_state.sample();
+    sum = second_sumcheck_poly.evaluate(r2);
 
     let (mut challenges, folds, sum) = sumcheck_prove_many_rounds(
         1,
-        MleGroupOwned::merge(vec![pol_a, pol_b]),
+        MleGroupOwned::ExtensionPacked(vec![folded_pol_a, folded_pol_b]),
+        Some(vec![EF::ONE - r2, r2]),
         &ProductComputation,
         &ProductComputation,
         &[],
@@ -82,10 +103,10 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         prover_state,
         sum,
         None,
-        n_rounds - 1,
+        n_rounds - 2,
     );
 
-    challenges.insert(0, r);
+    challenges.splice(0..0, [r1, r2]);
     let [pol_a, pol_b] = folds.split().try_into().unwrap();
     (challenges, sum, pol_a, pol_b)
 }
@@ -119,6 +140,62 @@ pub fn compute_product_sumcheck_polynomial<
     let c1 = sum - c0.double() - c2;
 
     DensePolynomial::new(vec![c0, c1, c2])
+}
+
+pub fn fold_and_compute_product_sumcheck_polynomial<
+    F: PrimeCharacteristicRing + Copy + Send + Sync,
+    EF: Field,
+    EFPacking: Algebra<F> + From<EF> + Copy + Send + Sync,
+>(
+    pol_0: &[F],         // evals
+    pol_1: &[EFPacking], // weights
+    prev_folding_factor: EF,
+    sum: EF,
+    decompose: impl Fn(EFPacking) -> Vec<EF>,
+) -> (DensePolynomial<EF>, [Vec<EFPacking>; 2]) {
+    let n = pol_0.len();
+    assert_eq!(n, pol_1.len());
+    assert!(n.is_power_of_two());
+    let prev_folding_factor_packed = EFPacking::from(prev_folding_factor);
+
+    let mut pol_0_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
+    let mut pol_1_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
+
+    let (c0_packed, c2_packed) = zip_fold_2(pol_0, &mut pol_0_folded)
+        .zip(zip_fold_2(pol_1, &mut pol_1_folded))
+        .map(|((p0_prev, p0_f), (p1_prev, p1_f))| {
+            let pol_0_folded_left =
+                prev_folding_factor_packed * (*p0_prev.1.0 - *p0_prev.0.0) + *p0_prev.0.0;
+            let pol_0_folded_right =
+                prev_folding_factor_packed * (*p0_prev.1.1 - *p0_prev.0.1) + *p0_prev.0.1;
+            *p0_f.0 = pol_0_folded_left;
+            *p0_f.1 = pol_0_folded_right;
+
+            let pol_1_folded_left =
+                prev_folding_factor_packed * (*p1_prev.1.0 - *p1_prev.0.0) + *p1_prev.0.0;
+            let pol_1_folded_right =
+                prev_folding_factor_packed * (*p1_prev.1.1 - *p1_prev.0.1) + *p1_prev.0.1;
+            *p1_f.0 = pol_1_folded_left;
+            *p1_f.1 = pol_1_folded_right;
+
+            sumcheck_quadratic((
+                (&pol_0_folded_left, &pol_0_folded_right),
+                (&pol_1_folded_left, &pol_1_folded_right),
+            ))
+        })
+        .reduce(
+            || (EFPacking::ZERO, EFPacking::ZERO),
+            |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
+        );
+    let c0 = decompose(c0_packed).into_iter().sum::<EF>();
+    let c2 = decompose(c2_packed).into_iter().sum::<EF>();
+
+    let c1 = sum - c0.double() - c2;
+
+    (
+        DensePolynomial::new(vec![c0, c1, c2]),
+        [pol_0_folded, pol_1_folded],
+    )
 }
 
 #[inline]
