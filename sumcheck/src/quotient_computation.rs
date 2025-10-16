@@ -153,7 +153,7 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     missing_mul_factor: EF,
     sum: EF,
     decompose: impl Fn(F) -> Vec<EF>,
-) -> (DensePolynomial<EF>, [Vec<F>; 4]) {
+) -> (DensePolynomial<EF>, Vec<Vec<F>>) {
     let n = u0.len();
     assert_eq!(eq_mle.len(), n / 4);
     assert!(
@@ -232,6 +232,6 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
             c1 * missing_mul_factor,
             c2 * missing_mul_factor,
         ]),
-        [folded_u0, folded_u1, folded_u2, folded_u3],
+        vec![folded_u0, folded_u1, folded_u2, folded_u3],
     )
 }

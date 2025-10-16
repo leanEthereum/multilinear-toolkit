@@ -72,7 +72,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         unimplemented!()
     }
 
-    let (second_sumcheck_poly, [folded_pol_a, folded_pol_b]) = match (pol_a, pol_b) {
+    let (second_sumcheck_poly, folded) = match (pol_a, pol_b) {
         (MleRef::BasePacked(evals), MleRef::ExtensionPacked(weights)) => {
             fold_and_compute_product_sumcheck_polynomial(&evals, &weights, r1, sum, |e| {
                 EFPacking::<EF>::to_ext_iter([e]).collect()
@@ -93,7 +93,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
 
     let (mut challenges, folds, sum) = sumcheck_prove_many_rounds(
         1,
-        MleGroupOwned::ExtensionPacked(vec![folded_pol_a, folded_pol_b]),
+        MleGroupOwned::ExtensionPacked(folded),
         Some(vec![EF::ONE - r2, r2]),
         &ProductComputation,
         &ProductComputation,
@@ -152,7 +152,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     prev_folding_factor: EF,
     sum: EF,
     decompose: impl Fn(EFPacking) -> Vec<EF>,
-) -> (DensePolynomial<EF>, [Vec<EFPacking>; 2]) {
+) -> (DensePolynomial<EF>, Vec<Vec<EFPacking>>) {
     let n = pol_0.len();
     assert_eq!(n, pol_1.len());
     assert!(n.is_power_of_two());
@@ -194,7 +194,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
 
     (
         DensePolynomial::new(vec![c0, c1, c2]),
-        [pol_0_folded, pol_1_folded],
+        vec![pol_0_folded, pol_1_folded],
     )
 }
 

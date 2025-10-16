@@ -302,7 +302,7 @@ where
                     sum,
                     |e| vec![e],
                 );
-                (poly, MleGroupOwned::Extension(folded.to_vec()))
+                (poly, MleGroupOwned::Extension(folded))
             }
             MleGroupRef::ExtensionPacked(multilinears) => {
                 let (poly, folded) = fold_and_compute_product_sumcheck_polynomial(
@@ -312,7 +312,7 @@ where
                     sum,
                     |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
                 );
-                (poly, MleGroupOwned::ExtensionPacked(folded.to_vec()))
+                (poly, MleGroupOwned::ExtensionPacked(folded))
             }
             _ => unimplemented!(),
         };
@@ -350,7 +350,7 @@ where
                     sum,
                     |e| vec![e],
                 );
-                let folded = MleGroupOwned::Extension(folded.to_vec());
+                let folded = MleGroupOwned::Extension(folded);
                 (poly, folded)
             }
             MleGroupRef::ExtensionPacked(multilinears) => {
@@ -368,7 +368,7 @@ where
                     sum,
                     |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
                 );
-                let folded = MleGroupOwned::ExtensionPacked(folded.to_vec());
+                let folded = MleGroupOwned::ExtensionPacked(folded);
                 (poly, folded)
             }
             _ => unimplemented!(),
