@@ -388,7 +388,7 @@ pub fn compute_eval_eq_base_packed<F, EF, const INITIALIZED: bool>(
 
     // Ensure that the output buffer size is correct:
     // It should be of size `2^n`, where `n` is the number of variables.
-    debug_assert_eq!(out.len(), 1 << eval.len());
+    debug_assert_eq!(out.len(), 1 << (eval.len() - log_packing_width));
 
     // If the number of variables is small, there is no need to use
     // parallelization or packings.
@@ -856,8 +856,7 @@ fn eval_eq_with_packed_output<F: Field, EF: ExtensionField<F>, const INITIALIZED
 ) {
     // Ensure that the output buffer size is correct:
     // It should be of size `2^n`, where `n` is the number of variables.
-    let width = F::Packing::WIDTH;
-    debug_assert_eq!(out.len(), width << eval.len());
+    debug_assert_eq!(out.len(), 1 << eval.len());
 
     match eval.len() {
         0 => {
@@ -1006,7 +1005,7 @@ fn base_eval_eq_packed_with_packed_output<F, EF, const INITIALIZED: bool>(
     // It should be of size `2^n`, where `n` is the number of variables.
     let width = F::Packing::WIDTH;
     let log_packing_width = log2_strict_usize(width);
-    debug_assert_eq!(out.len(), width << eval_points.len());
+    debug_assert_eq!(out.len(), 1 << eval_points.len());
     debug_assert!(log_packing_width <= eval_points.len());
 
     match eval_points.len() {
