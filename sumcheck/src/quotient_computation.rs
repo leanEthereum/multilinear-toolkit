@@ -141,7 +141,7 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     F: Algebra<EF> + Copy + Send + Sync,
     EF: Field,
 >(
-    prev_folding_factors: &[EF],
+    prev_folding_factor: EF,
     u0: &[F],
     u1: &[F],
     u2: &[F],
@@ -156,11 +156,6 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
 ) -> (DensePolynomial<EF>, Vec<Vec<F>>) {
     let n = u0.len();
     assert_eq!(eq_mle.len(), n / 4);
-    assert!(
-        prev_folding_factors.len() == 2
-            && prev_folding_factors[0] == EF::ONE - prev_folding_factors[1]
-    );
-    let alpha = prev_folding_factors[1];
 
     let mut folded_u0 = unsafe { uninitialized_vec::<F>(n / 2) };
     let mut folded_u1 = unsafe { uninitialized_vec::<F>(n / 2) };
@@ -168,8 +163,8 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     let mut folded_u3 = unsafe { uninitialized_vec::<F>(n / 2) };
 
     let my_fold = |u: ((&F, &F), (&F, &F)), folded: (&mut F, &mut F)| {
-        let u_left = *u.0.0 + (*u.1.0 - *u.0.0) * alpha;
-        let u_right = *u.0.1 + (*u.1.1 - *u.0.1) * alpha;
+        let u_left = *u.0.0 + (*u.1.0 - *u.0.0) * prev_folding_factor;
+        let u_right = *u.0.1 + (*u.1.1 - *u.0.1) * prev_folding_factor;
         *folded.0 = u_left;
         *folded.1 = u_right;
         (u_left, u_right)

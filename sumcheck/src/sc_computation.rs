@@ -291,14 +291,14 @@ where
             prev_folding_factors.len() == 2
                 && prev_folding_factors[0] == EF::ONE - prev_folding_factors[1]
         );
-        let alpha = prev_folding_factors[1];
+        let prev_folding_factor = prev_folding_factors[1];
 
         let (poly, folded) = match group {
             MleGroupRef::Extension(multilinears) => {
                 let (poly, folded) = fold_and_compute_product_sumcheck_polynomial(
                     &multilinears[0],
                     &multilinears[1],
-                    alpha,
+                    prev_folding_factor,
                     sum,
                     |e| vec![e],
                 );
@@ -308,7 +308,7 @@ where
                 let (poly, folded) = fold_and_compute_product_sumcheck_polynomial(
                     &multilinears[0],
                     &multilinears[1],
-                    alpha,
+                    prev_folding_factor,
                     sum,
                     |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
                 );
@@ -330,6 +330,11 @@ where
         assert!(eq_mle.is_some());
         assert!(batching_scalars.is_empty());
         assert_eq!(group.n_columns(), 4);
+        assert!(
+            prev_folding_factors.len() == 2
+                && prev_folding_factors[0] == EF::ONE - prev_folding_factors[1]
+        );
+        let prev_folding_factor = prev_folding_factors[1];
 
         let sc_computation =
             unsafe { std::mem::transmute::<&SC, &GKRQuotientComputation<EF>>(computation) };
@@ -337,7 +342,7 @@ where
         let (poly, folded_multilinears) = match group {
             MleGroupRef::Extension(multilinears) => {
                 let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
-                    &prev_folding_factors,
+                    prev_folding_factor,
                     &multilinears[0],
                     &multilinears[1],
                     &multilinears[2],
@@ -355,7 +360,7 @@ where
             }
             MleGroupRef::ExtensionPacked(multilinears) => {
                 let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
-                    &prev_folding_factors,
+                    prev_folding_factor,
                     &multilinears[0],
                     &multilinears[1],
                     &multilinears[2],
@@ -382,66 +387,64 @@ where
         );
     }
 
-    todo!()
-
-    // match group {
-    //     MleGroupRef::ExtensionPacked(multilinears) => {
-    //         let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-    //         sumcheck_compute_packed::<EF, EFPacking<EF>, _>(
-    //             multilinears,
-    //             zs,
-    //             skips,
-    //             eq_mle,
-    //             folding_factors,
-    //             computation_packed,
-    //             batching_scalars,
-    //             missing_mul_factor,
-    //             packed_fold_size,
-    //         )
-    //     }
-    //     MleGroupRef::BasePacked(multilinears) => {
-    //         let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-    //         sumcheck_compute_packed::<EF, PFPacking<EF>, _>(
-    //             multilinears,
-    //             zs,
-    //             skips,
-    //             eq_mle,
-    //             folding_factors,
-    //             computation_packed,
-    //             batching_scalars,
-    //             missing_mul_factor,
-    //             packed_fold_size,
-    //         )
-    //     }
-    //     MleGroupRef::Base(multilinears) => {
-    //         let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
-    //         sumcheck_compute_not_packed(
-    //             multilinears,
-    //             zs,
-    //             skips,
-    //             eq_mle,
-    //             folding_factors,
-    //             computation,
-    //             batching_scalars,
-    //             missing_mul_factor,
-    //             fold_size,
-    //         )
-    //     }
-    //     MleGroupRef::Extension(multilinears) => {
-    //         let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
-    //         sumcheck_compute_not_packed(
-    //             multilinears,
-    //             zs,
-    //             skips,
-    //             eq_mle,
-    //             folding_factors,
-    //             computation,
-    //             batching_scalars,
-    //             missing_mul_factor,
-    //             fold_size,
-    //         )
-    //     }
-    // }
+    match group {
+        MleGroupRef::ExtensionPacked(multilinears) => {
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
+            sumcheck_compute_packed::<EF, EFPacking<EF>, _>(
+                multilinears,
+                zs,
+                skips,
+                eq_mle,
+                folding_factors,
+                computation_packed,
+                batching_scalars,
+                missing_mul_factor,
+                packed_fold_size,
+            )
+        }
+        MleGroupRef::BasePacked(multilinears) => {
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
+            sumcheck_compute_packed::<EF, PFPacking<EF>, _>(
+                multilinears,
+                zs,
+                skips,
+                eq_mle,
+                folding_factors,
+                computation_packed,
+                batching_scalars,
+                missing_mul_factor,
+                packed_fold_size,
+            )
+        }
+        MleGroupRef::Base(multilinears) => {
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
+            sumcheck_compute_not_packed(
+                multilinears,
+                zs,
+                skips,
+                eq_mle,
+                folding_factors,
+                computation,
+                batching_scalars,
+                missing_mul_factor,
+                fold_size,
+            )
+        }
+        MleGroupRef::Extension(multilinears) => {
+            let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
+            sumcheck_compute_not_packed(
+                multilinears,
+                zs,
+                skips,
+                eq_mle,
+                folding_factors,
+                computation,
+                batching_scalars,
+                missing_mul_factor,
+                fold_size,
+            )
+        }
+    }
 }
 
 #[derive(Debug)]
