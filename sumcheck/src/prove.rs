@@ -2,6 +2,7 @@ use backend::*;
 use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
+use p3_util::log2_strict_usize;
 use rayon::prelude::*;
 
 use crate::*;
@@ -24,12 +25,49 @@ where
     SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
     SCP: SumcheckComputationPacked<EF>,
 {
-    let multilinears: MleGroup<'a, EF> = multilinears.into();
-    let n_rounds = multilinears.by_ref().n_vars() - skip + 1;
-    let (challenges, final_folds, final_sum) = sumcheck_prove_many_rounds(
+    sumcheck_fold_and_prove(
         skip,
         multilinears,
         None,
+        computation,
+        computation_packed,
+        batching_scalars,
+        eq_factor,
+        is_zerofier,
+        prover_state,
+        sum,
+        missing_mul_factors,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sumcheck_fold_and_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+    skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
+    multilinears: M,
+    prev_folding_factors: Option<Vec<EF>>,
+    computation: &SC,
+    computation_packed: &SCP,
+    batching_scalars: &[EF],
+    eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
+    is_zerofier: bool,
+    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    sum: EF,
+    missing_mul_factors: Option<EF>,
+) -> (MultilinearPoint<EF>, Vec<EF>, EF)
+where
+    EF: ExtensionField<PF<EF>>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
+    SCP: SumcheckComputationPacked<EF>,
+{
+    let multilinears: MleGroup<'a, EF> = multilinears.into();
+    let mut n_rounds = multilinears.by_ref().n_vars() - skip + 1;
+    if let Some(prev_folding_factors) = &prev_folding_factors {
+        n_rounds -= log2_strict_usize(prev_folding_factors.len());
+    }
+    let (challenges, final_folds, final_sum) = sumcheck_prove_many_rounds(
+        skip,
+        multilinears,
+        prev_folding_factors,
         computation,
         computation_packed,
         batching_scalars,
@@ -54,6 +92,7 @@ where
 
     (challenges, final_folds, final_sum)
 }
+
 #[allow(clippy::too_many_arguments)]
 pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
@@ -88,6 +127,9 @@ where
             (eq_point, eq_mle)
         });
     let mut n_vars = multilinears.by_ref().n_vars();
+    if let Some(prev_folding_factors) = &prev_folding_factors {
+        n_vars -= log2_strict_usize(prev_folding_factors.len());
+    }
     if let Some((eq_point, eq_mle)) = &eq_factor {
         assert_eq!(eq_point.len(), n_vars - skip + 1);
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
