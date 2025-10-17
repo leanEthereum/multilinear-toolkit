@@ -5,10 +5,13 @@ use fiat_shamir::*;
 use p3_air::Air;
 use p3_field::PackedFieldExtension;
 use p3_field::PrimeCharacteristicRing;
+use p3_field::dot_product;
 use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
+use p3_util::log2_strict_usize;
 use rayon::prelude::*;
 use std::any::TypeId;
+use std::ops::Add;
 use std::ops::Mul;
 
 pub trait SumcheckComputation<NF, EF>: Sync {
@@ -275,8 +278,8 @@ where
         sum,
     } = params;
 
-    let fold_size = 1 << (group.n_vars() - skips);
-    let packed_fold_size = if group.is_packed() {
+    let fold_size = 1 << (group.n_vars() - skips - log2_strict_usize(prev_folding_factors.len()));
+    let compute_fold_size = if group.is_packed() {
         fold_size / packing_width::<EF>()
     } else {
         fold_size
@@ -390,7 +393,8 @@ where
     match group {
         MleGroupRef::ExtensionPacked(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-            sumcheck_compute_packed::<EF, EFPacking<EF>, _>(
+            sumcheck_fold_and_compute_packed::<EF, EFPacking<EF>, _>(
+                prev_folding_factors,
                 multilinears,
                 zs,
                 skips,
@@ -399,12 +403,14 @@ where
                 computation_packed,
                 batching_scalars,
                 missing_mul_factor,
-                packed_fold_size,
+                compute_fold_size,
+                |wpf, ef| wpf * ef,
             )
         }
         MleGroupRef::BasePacked(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension_packed().unwrap());
-            sumcheck_compute_packed::<EF, PFPacking<EF>, _>(
+            sumcheck_fold_and_compute_packed::<EF, PFPacking<EF>, _>(
+                prev_folding_factors,
                 multilinears,
                 zs,
                 skips,
@@ -413,12 +419,14 @@ where
                 computation_packed,
                 batching_scalars,
                 missing_mul_factor,
-                packed_fold_size,
+                compute_fold_size,
+                |wpf, ef| EFPacking::<EF>::from(ef) * wpf,
             )
         }
         MleGroupRef::Base(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
-            sumcheck_compute_not_packed(
+            sumcheck_fold_and_compute_not_packed::<EF, PF<EF>, _>(
+                prev_folding_factors,
                 multilinears,
                 zs,
                 skips,
@@ -432,7 +440,8 @@ where
         }
         MleGroupRef::Extension(multilinears) => {
             let eq_mle = eq_mle.map(|eq_mle| eq_mle.as_extension().unwrap());
-            sumcheck_compute_not_packed(
+            sumcheck_fold_and_compute_not_packed::<EF, EF, _>(
+                prev_folding_factors,
                 multilinears,
                 zs,
                 skips,
@@ -532,6 +541,106 @@ where
     evals
 }
 
+fn sumcheck_fold_and_compute_not_packed<
+    EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
+    IF: ExtensionField<PF<EF>>,
+    SC,
+>(
+    prev_folding_factors: &[EF],
+    multilinears: &[&[IF]],
+    zs: &[usize],
+    skips: usize,
+    eq_mle: Option<&[EF]>,
+    folding_factors: &[Vec<PF<EF>>],
+    computation: &SC,
+    batching_scalars: &[EF],
+    missing_mul_factor: Option<EF>,
+    compute_fold_size: usize,
+) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>)
+where
+    SC: SumcheckComputation<EF, EF>,
+{
+    let bi_folded = prev_folding_factors.len() == 2;
+    if bi_folded {
+        assert!(prev_folding_factors[0] == EF::ONE - prev_folding_factors[1],);
+    }
+    let prev_folded_size = multilinears[0].len() / prev_folding_factors.len();
+    let folded = (0..multilinears.len())
+        .map(|_| EF::zero_vec(prev_folded_size))
+        .collect::<Vec<_>>();
+    let n = zs.len();
+    let sum_zs_packed = (0..compute_fold_size)
+        .into_par_iter()
+        .map(|i| {
+            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+            let rows = multilinears
+                .iter()
+                .enumerate()
+                .map(|(j, m)| {
+                    (0..1 << skips)
+                        .map(|k| {
+                            let id = i + k * compute_fold_size;
+                            let res: EF = if bi_folded {
+                                prev_folding_factors[1] * (m[id + prev_folded_size] - m[id]) + m[id]
+                            } else {
+                                dot_product(
+                                    prev_folding_factors.iter().copied(),
+                                    (0..prev_folding_factors.len())
+                                        .map(|l| m[id + l * prev_folded_size]),
+                                )
+                            };
+
+                            unsafe {
+                                // folded[j][id] = res;
+                                let folded_ptr = folded[j].as_ptr() as *mut EF;
+                                *folded_ptr.add(id) = res;
+                            }
+                            res
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            (0..n)
+                .map(|z_index| {
+                    let folding_factors_z = &folding_factors[z_index];
+                    let point = rows
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_factors_z.iter())
+                                .map(|(x, s)| *x * *s)
+                                .sum::<EF>()
+                        })
+                        .collect::<Vec<_>>();
+
+                    let mut res = computation.eval(&point, batching_scalars);
+                    if let Some(eq_mle_eval) = eq_mle_eval {
+                        res *= eq_mle_eval;
+                    }
+                    res
+                })
+                .collect::<Vec<_>>()
+        })
+        .reduce(
+            || vec![EF::ZERO; n],
+            |mut acc, sums| {
+                sums.into_iter().enumerate().for_each(|(i, sum)| {
+                    acc[i] += sum;
+                });
+                acc
+            },
+        );
+    let mut evals = vec![];
+    for (z_index, z) in zs.iter().enumerate() {
+        let mut sum_z = sum_zs_packed[z_index];
+        if let Some(missing_mul_factor) = missing_mul_factor {
+            sum_z *= missing_mul_factor;
+        }
+        evals.push((PF::<EF>::from_usize(*z), sum_z));
+    }
+    (evals, MleGroupOwned::Extension(folded))
+}
+
 fn sumcheck_compute_packed<
     EF: ExtensionField<PF<EF>>, // extension field
     WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
@@ -616,4 +725,117 @@ fn sumcheck_compute_packed<
         evals.push((PF::<EF>::from_usize(*z), sum_z));
     }
     evals
+}
+
+fn sumcheck_fold_and_compute_packed<
+    EF: ExtensionField<PF<EF>>, // extension field
+    WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
+    SCP: SumcheckComputationPacked<EF>,
+>(
+    prev_folding_factors: &[EF],
+    multilinears: &[&[WPF]],
+    zs: &[usize],
+    skips: usize,
+    eq_mle: Option<&[EFPacking<EF>]>,
+    folding_factors: &[Vec<PF<EF>>],
+    computation_packed: &SCP,
+    batching_scalars: &[EF],
+    missing_mul_factor: Option<EF>,
+    compute_fold_size: usize,
+    mul: impl Fn(WPF, EF) -> EFPacking<EF> + Sync + Send,
+) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>)
+where
+    EFPacking<EF>: Add<WPF, Output = EFPacking<EF>>,
+{
+    let prev_folded_size = multilinears[0].len() / prev_folding_factors.len();
+    let folded = (0..multilinears.len())
+        .map(|_| EFPacking::<EF>::zero_vec(prev_folded_size))
+        .collect::<Vec<_>>();
+    let n = zs.len();
+
+    let bi_folded = prev_folding_factors.len() == 2;
+    if bi_folded {
+        assert!(prev_folding_factors[0] == EF::ONE - prev_folding_factors[1],);
+    }
+
+    let folding_factors = folding_factors
+        .iter()
+        .map(|scalars| {
+            scalars
+                .iter()
+                .map(|s| PFPacking::<EF>::from(*s))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let sum_zs_packed = (0..compute_fold_size)
+        .into_par_iter()
+        .map(|i| {
+            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+            let rows = multilinears
+                .iter()
+                .enumerate()
+                .map(|(j, m)| {
+                    (0..1 << skips)
+                        .map(|k| {
+                            let id = i + k * compute_fold_size;
+                            let res: EFPacking<EF> = if bi_folded {
+                                mul(m[id + prev_folded_size] - m[id], prev_folding_factors[1])
+                                    + m[id]
+                            } else {
+                                prev_folding_factors
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(l, &f)| mul(m[id + l * prev_folded_size], f))
+                                    .sum()
+                            };
+                            unsafe {
+                                // folded[j][id] = res;
+                                let folded_ptr = folded[j].as_ptr() as *mut EFPacking<EF>;
+                                *folded_ptr.add(id) = res;
+                            }
+                            res
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            (0..n)
+                .map(|z_index| {
+                    let folding_factors_z = &folding_factors[z_index];
+                    let point = rows
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .zip(folding_factors_z.iter())
+                                .map(|(x, s)| *x * *s)
+                                .sum::<EFPacking<EF>>()
+                        })
+                        .collect::<Vec<_>>();
+                    let mut res =
+                        computation_packed.eval_packed_extension(&point, batching_scalars);
+                    if let Some(eq_mle_eval) = eq_mle_eval {
+                        res *= eq_mle_eval;
+                    }
+                    res
+                })
+                .collect::<Vec<_>>()
+        })
+        .reduce(
+            || vec![EFPacking::<EF>::ZERO; n],
+            |mut acc, sums| {
+                sums.into_iter().enumerate().for_each(|(i, sum)| {
+                    acc[i] += sum;
+                });
+                acc
+            },
+        );
+
+    let mut evals = vec![];
+    for (z_index, z) in zs.iter().enumerate() {
+        let mut sum_z = EFPacking::<EF>::to_ext_iter([sum_zs_packed[z_index]]).sum::<EF>();
+        if let Some(missing_mul_factor) = missing_mul_factor {
+            sum_z *= missing_mul_factor;
+        }
+        evals.push((PF::<EF>::from_usize(*z), sum_z));
+    }
+    (evals, MleGroupOwned::ExtensionPacked(folded))
 }
