@@ -61,26 +61,27 @@ pub fn fold_multilinear<
 ) -> Vec<OF> {
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
     let new_size = m.len() / scalars.len();
-
+    let mut res = unsafe { uninitialized_vec(new_size) };
     if scalars.len() == 2 {
         assert_eq!(scalars[0], EF::ONE - scalars[1]);
         let alpha = scalars[1];
-        return (0..new_size)
+        (0..new_size)
             .into_par_iter()
             .map(|i| mul_if_of(m[i + new_size] - m[i], alpha) + m[i])
-            .collect();
+            .collect_into_vec(&mut res);
+    } else {
+        (0..new_size)
+            .into_par_iter()
+            .map(|i| {
+                scalars
+                    .iter()
+                    .enumerate()
+                    .map(|(j, s)| mul_if_of(m[i + j * new_size], *s))
+                    .sum()
+            })
+            .collect_into_vec(&mut res);
     }
-
-    (0..new_size)
-        .into_par_iter()
-        .map(|i| {
-            scalars
-                .iter()
-                .enumerate()
-                .map(|(j, s)| mul_if_of(m[i + j * new_size], *s))
-                .sum()
-        })
-        .collect()
+    res
 }
 
 /// Returns a vector of uninitialized elements of type `A` with the specified length.
