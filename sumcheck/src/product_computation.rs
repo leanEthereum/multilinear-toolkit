@@ -199,7 +199,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
 }
 
 #[inline]
-pub(crate) fn sumcheck_quadratic<F, EF>(
+pub fn sumcheck_quadratic<F, EF>(
     ((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF)),
 ) -> (EF, EF)
 where
