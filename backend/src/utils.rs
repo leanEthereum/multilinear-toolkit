@@ -1,4 +1,7 @@
-use std::{iter::Sum, ops::{Add, Sub}};
+use std::{
+    iter::Sum,
+    ops::{Add, Sub},
+};
 
 use fiat_shamir::*;
 use p3_field::*;
@@ -33,7 +36,6 @@ pub const fn packing_log_width<EF: Field>() -> usize {
 pub const fn packing_width<EF: Field>() -> usize {
     PFPacking::<EF>::WIDTH
 }
-
 
 pub fn batch_fold_multilinears<
     EF: PrimeCharacteristicRing + Copy + Send + Sync,
@@ -195,9 +197,9 @@ pub fn split_at_mut_many<'a, A>(slice: &'a mut [A], indices: &[usize]) -> Vec<&'
     result
 }
 
-pub fn par_iter_zip_quarters<F: Sync + Send>(
-    u: &[F],
-) -> Zip<Zip<Iter<'_, F>, Iter<'_, F>>, Zip<Iter<'_, F>, Iter<'_, F>>> {
+pub fn par_iter_split_4<'a, A: Sync + Send>(
+    u: &'a [A],
+) -> Zip<Zip<Iter<'a, A>, Iter<'a, A>>, Zip<Iter<'a, A>, Iter<'a, A>>> {
     let n = u.len();
     assert!(n % 4 == 0);
     let [u_ll, u_lr, u_rl, u_rr] = split_at_many(u, &[n / 4, n / 2, 3 * n / 4])
@@ -207,7 +209,25 @@ pub fn par_iter_zip_quarters<F: Sync + Send>(
     (u_ll.par_iter().zip(u_lr)).zip(u_rl.par_iter().zip(u_rr.par_iter()))
 }
 
-pub fn zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
+pub fn par_iter_split_2<'a, A: Sync + Send>(
+    u: &'a [A],
+) -> Zip<Iter<'a, A>, Iter<'a, A>> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at(n / 2);
+    u_left.par_iter().zip(u_right.par_iter())
+}
+
+pub fn par_iter_mut_split_2<'a, A: Sync + Send>(
+    u: &'a mut [A],
+) -> Zip<IterMut<'a, A>, IterMut<'a, A>> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at_mut(n / 2);
+    u_left.par_iter_mut().zip(u_right.par_iter_mut())
+}
+
+pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
     u: &'a [A],
     folded: &'b mut [B],
 ) -> Zip<
@@ -217,14 +237,7 @@ pub fn zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
     let n = u.len();
     assert!(n % 4 == 0);
     assert_eq!(folded.len(), n / 2);
-    let (folded_left, folded_right) = folded.split_at_mut(n / 4);
-    let [u_ll, u_lr, u_rl, u_rr] = split_at_many(u, &[n / 4, n / 2, 3 * n / 4])
-        .try_into()
-        .ok()
-        .unwrap();
-    (u_ll.par_iter().zip(u_lr))
-        .zip(u_rl.par_iter().zip(u_rr.par_iter()))
-        .zip((folded_left.par_iter_mut()).zip(folded_right.par_iter_mut()))
+    par_iter_split_4(u).zip(par_iter_mut_split_2(folded))
 }
 
 // pub fn convert_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {

@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 use backend::{
     DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, uninitialized_vec,
-    zip_fold_2,
+    par_zip_fold_2,
 };
 use fiat_shamir::*;
 use p3_field::*;
@@ -161,8 +161,8 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     let mut pol_0_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
     let mut pol_1_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
 
-    let (c0_packed, c2_packed) = zip_fold_2(pol_0, &mut pol_0_folded)
-        .zip(zip_fold_2(pol_1, &mut pol_1_folded))
+    let (c0_packed, c2_packed) = par_zip_fold_2(pol_0, &mut pol_0_folded)
+        .zip(par_zip_fold_2(pol_1, &mut pol_1_folded))
         .map(|((p0_prev, p0_f), (p1_prev, p1_f))| {
             let pol_0_folded_left =
                 prev_folding_factor_packed * (*p0_prev.1.0 - *p0_prev.0.0) + *p0_prev.0.0;

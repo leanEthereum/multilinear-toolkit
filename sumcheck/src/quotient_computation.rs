@@ -1,4 +1,4 @@
-use backend::{DensePolynomial, uninitialized_vec, zip_fold_2};
+use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, uninitialized_vec};
 use fiat_shamir::{EFPacking, PF, PFPacking};
 use p3_field::{Algebra, ExtensionField, Field};
 use rayon::prelude::*;
@@ -77,21 +77,16 @@ pub fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + S
     let n = u0.len();
     assert_eq!(eq_mle.len(), n / 2);
 
-    let (c0_term_single, c2_term_single, c0_term_double, c2_term_double) = u0[0..n / 2]
-        .par_iter()
-        .zip(u0[n / 2..].par_iter())
-        .zip(u1[0..n / 2].par_iter())
-        .zip(u1[n / 2..].par_iter())
-        .zip(u2[0..n / 2].par_iter())
-        .zip(u2[n / 2..].par_iter())
-        .zip(u3[0..n / 2].par_iter())
-        .zip(u3[n / 2..].par_iter())
+    let (c0_term_single, c2_term_single, c0_term_double, c2_term_double) = par_iter_split_2(u0)
+        .zip(par_iter_split_2(u1))
+        .zip(par_iter_split_2(u2))
+        .zip(par_iter_split_2(u3))
         .zip(eq_mle.par_iter())
         .map(
             |(
                 (
-                    ((((((u0_left, u0_right), u1_left), u1_right), u2_left), u2_right), u3_left),
-                    u3_right,
+                    (((u0_left, u0_right), (u1_left, u1_right)), (u2_left, u2_right)),
+                    (u3_left, u3_right),
                 ),
                 &eq_val,
             )| {
@@ -171,10 +166,10 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     };
 
     let (c0_term_single, c2_term_single, c0_term_double, c2_term_double) =
-        zip_fold_2(u0, &mut folded_u0)
-            .zip(zip_fold_2(u1, &mut folded_u1))
-            .zip(zip_fold_2(u2, &mut folded_u2))
-            .zip(zip_fold_2(u3, &mut folded_u3))
+        par_zip_fold_2(u0, &mut folded_u0)
+            .zip(par_zip_fold_2(u1, &mut folded_u1))
+            .zip(par_zip_fold_2(u2, &mut folded_u2))
+            .zip(par_zip_fold_2(u3, &mut folded_u3))
             .zip(eq_mle.par_iter())
             .map(
                 |(
