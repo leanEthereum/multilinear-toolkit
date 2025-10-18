@@ -168,7 +168,8 @@ where
         let challenge = prover_state.sample();
         challenges.push(challenge);
 
-        prev_folding_factors = Some(on_challenge_received(
+        prev_folding_factors = on_challenge_received(
+            &mut multilinears,
             skip,
             &mut n_vars,
             &mut eq_factor,
@@ -176,7 +177,7 @@ where
             &mut missing_mul_factors,
             challenge,
             &ps,
-        ));
+        );
         skip = 1;
         is_zerofier = false;
     }
@@ -307,6 +308,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
+    multilinears: &mut MleGroup<'a, EF>,
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     n_vars: &mut usize,
     eq_factor: &mut Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
@@ -314,7 +316,7 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
     p: &DensePolynomial<EF>,
-) -> Vec<EF> {
+) -> Option<Vec<EF>> {
     *sum = p.evaluate(challenge);
     *n_vars -= skips;
 
@@ -333,8 +335,17 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
         eq_mle.truncate(eq_mle.by_ref().packed_len() / 2);
     }
     // return the folding_factors
-    selectors
+    let selectors = selectors
         .iter()
         .map(|s| s.evaluate(challenge))
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+
+    if multilinears.n_columns() >= 5 {
+        // Heuristic (otherwise we cannot cache too much data)
+        // TODO it's possible to do muchhh better
+        *multilinears = multilinears.by_ref().fold(&selectors).into();
+        None
+    } else {
+        Some(selectors)
+    }
 }
