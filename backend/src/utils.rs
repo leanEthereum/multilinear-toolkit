@@ -1,6 +1,6 @@
 use std::{
     iter::Sum,
-    ops::{Add, Sub},
+    ops::{Add, Range, Sub},
 };
 
 use fiat_shamir::*;
@@ -209,22 +209,38 @@ pub fn par_iter_split_4<'a, A: Sync + Send>(
     (u_ll.par_iter().zip(u_lr)).zip(u_rl.par_iter().zip(u_rr.par_iter()))
 }
 
-pub fn par_iter_split_2<'a, A: Sync + Send>(
+pub fn par_iter_split_2<'a, A: Sync + Send>(u: &'a [A]) -> Zip<Iter<'a, A>, Iter<'a, A>> {
+    par_iter_split_2_capped(u, 0..u.len() / 2)
+}
+
+pub fn par_iter_split_2_capped<'a, A: Sync + Send>(
     u: &'a [A],
+    range: Range<usize>,
 ) -> Zip<Iter<'a, A>, Iter<'a, A>> {
     let n = u.len();
     assert!(n % 2 == 0);
     let (u_left, u_right) = u.split_at(n / 2);
-    u_left.par_iter().zip(u_right.par_iter())
+    u_left[range.clone()]
+        .par_iter()
+        .zip(u_right[range.clone()].par_iter())
 }
 
 pub fn par_iter_mut_split_2<'a, A: Sync + Send>(
     u: &'a mut [A],
 ) -> Zip<IterMut<'a, A>, IterMut<'a, A>> {
+    par_iter_mut_split_2_capped(u, 0..u.len() / 2)
+}
+
+pub fn par_iter_mut_split_2_capped<'a, A: Sync + Send>(
+    u: &'a mut [A],
+    range: Range<usize>,
+) -> Zip<IterMut<'a, A>, IterMut<'a, A>> {
     let n = u.len();
     assert!(n % 2 == 0);
     let (u_left, u_right) = u.split_at_mut(n / 2);
-    u_left.par_iter_mut().zip(u_right.par_iter_mut())
+    u_left[range.clone()]
+        .par_iter_mut()
+        .zip(u_right[range].par_iter_mut())
 }
 
 pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
