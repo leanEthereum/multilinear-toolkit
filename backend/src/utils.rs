@@ -1,11 +1,15 @@
 use std::{
     iter::Sum,
-    ops::{Add, Sub},
+    ops::{Add, Range, Sub},
 };
 
 use fiat_shamir::*;
 use p3_field::*;
-use rayon::prelude::*;
+use rayon::{
+    iter::Zip,
+    prelude::*,
+    slice::{Iter, IterMut},
+};
 
 pub fn pack_extension<EF: ExtensionField<PF<EF>>>(slice: &[EF]) -> Vec<EFPacking<EF>> {
     slice
@@ -191,6 +195,65 @@ pub fn split_at_mut_many<'a, A>(slice: &'a mut [A], indices: &[usize]) -> Vec<&'
     result.push(current_slice);
 
     result
+}
+
+pub fn par_iter_split_4<'a, A: Sync + Send>(
+    u: &'a [A],
+) -> Zip<Zip<Iter<'a, A>, Iter<'a, A>>, Zip<Iter<'a, A>, Iter<'a, A>>> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    let [u_ll, u_lr, u_rl, u_rr] = split_at_many(u, &[n / 4, n / 2, 3 * n / 4])
+        .try_into()
+        .ok()
+        .unwrap();
+    (u_ll.par_iter().zip(u_lr)).zip(u_rl.par_iter().zip(u_rr.par_iter()))
+}
+
+pub fn par_iter_split_2<'a, A: Sync + Send>(u: &'a [A]) -> Zip<Iter<'a, A>, Iter<'a, A>> {
+    par_iter_split_2_capped(u, 0..u.len() / 2)
+}
+
+pub fn par_iter_split_2_capped<'a, A: Sync + Send>(
+    u: &'a [A],
+    range: Range<usize>,
+) -> Zip<Iter<'a, A>, Iter<'a, A>> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at(n / 2);
+    u_left[range.clone()]
+        .par_iter()
+        .zip(u_right[range.clone()].par_iter())
+}
+
+pub fn par_iter_mut_split_2<'a, A: Sync + Send>(
+    u: &'a mut [A],
+) -> Zip<IterMut<'a, A>, IterMut<'a, A>> {
+    par_iter_mut_split_2_capped(u, 0..u.len() / 2)
+}
+
+pub fn par_iter_mut_split_2_capped<'a, A: Sync + Send>(
+    u: &'a mut [A],
+    range: Range<usize>,
+) -> Zip<IterMut<'a, A>, IterMut<'a, A>> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at_mut(n / 2);
+    u_left[range.clone()]
+        .par_iter_mut()
+        .zip(u_right[range].par_iter_mut())
+}
+
+pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
+    u: &'a [A],
+    folded: &'b mut [B],
+) -> Zip<
+    Zip<Zip<Iter<'a, A>, Iter<'a, A>>, Zip<Iter<'a, A>, Iter<'a, A>>>,
+    Zip<IterMut<'b, B>, IterMut<'b, B>>,
+> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    assert_eq!(folded.len(), n / 2);
+    par_iter_split_4(u).zip(par_iter_mut_split_2(folded))
 }
 
 // pub fn convert_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {
