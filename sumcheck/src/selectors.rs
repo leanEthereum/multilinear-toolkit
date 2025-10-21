@@ -37,3 +37,12 @@ pub fn univariate_selectors<F: Field>(n: usize) -> Arc<Vec<DensePolynomial<F>>> 
     .downcast::<Vec<DensePolynomial<F>>>()
     .unwrap()
 }
+
+pub fn eq_poly_with_skip<F: Field>(a: &[F], b: &[F], skips: usize) -> F {
+    assert_eq!(a.len(), b.len());
+    univariate_selectors::<F>(skips)
+        .iter()
+        .map(|s| s.evaluate(a[0]) * s.evaluate(b[0]))
+        .sum::<F>()
+        * MultilinearPoint(b[1..].to_vec()).eq_poly_outside(&MultilinearPoint(a[1..].to_vec()))
+}
