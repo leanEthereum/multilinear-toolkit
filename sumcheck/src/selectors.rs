@@ -11,6 +11,7 @@ type SelectorsCache = Mutex<HashMap<CacheKey, CacheValue>>;
 
 static SELECTORS_CACHE: OnceLock<SelectorsCache> = OnceLock::new();
 
+// TODO edge case deadlock with rayon
 pub fn univariate_selectors<F: Field>(n: usize) -> Arc<Vec<DensePolynomial<F>>> {
     let key = (TypeId::of::<F>(), n);
     let mut map = SELECTORS_CACHE
