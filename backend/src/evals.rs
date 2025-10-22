@@ -9,6 +9,7 @@ pub trait EvaluationsList<F: Field> {
     fn num_variables(&self) -> usize;
     fn num_evals(&self) -> usize;
     fn evaluate<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF;
+    fn evaluate_sequential<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF;
     fn as_constant(&self) -> F;
     fn evaluate_sparse<EF: ExtensionField<F>>(&self, points: &MultilinearPoint<EF>) -> EF;
 }
@@ -23,7 +24,11 @@ impl<F: Field, EL: Borrow<[F]>> EvaluationsList<F> for EL {
     }
 
     fn evaluate<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF {
-        eval_multilinear(self.borrow(), point)
+        eval_multilinear::<_, _, true>(self.borrow(), point)
+    }
+
+    fn evaluate_sequential<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF {
+        eval_multilinear::<_, _, false>(self.borrow(), point)
     }
 
     fn as_constant(&self) -> F {
@@ -65,12 +70,12 @@ pub fn scale_poly<F: Field, EF: ExtensionField<F>>(poly: &[F], factor: EF) -> Ve
     poly.par_iter().map(|&e| factor * e).collect()
 }
 
-fn eval_multilinear<F, EF>(evals: &[F], point: &[EF]) -> EF
+fn eval_multilinear<F, EF, const PARALLEL: bool>(evals: &[F], point: &[EF]) -> EF
 where
     F: Field,
     EF: ExtensionField<F>,
 {
-    eval_multilinear_generic(
+    eval_multilinear_generic::<_, _, _, _, _, _, PARALLEL>(
         evals,
         point,
         &|a: F, b: EF| b * a,
@@ -97,12 +102,12 @@ where
 //     eval_multilinear(&res_unpacked, &point[point.len() - log_width..])
 // }
 
-pub fn eval_packed<EF>(evals: &[EFPacking<EF>], point: &[EF]) -> EF
+pub fn eval_packed<EF, const PARALLEL: bool>(evals: &[EFPacking<EF>], point: &[EF]) -> EF
 where
     EF: ExtensionField<PF<EF>>,
 {
     let log_width = packing_log_width::<EF>();
-    let res_packed: EFPacking<EF> = eval_multilinear_generic(
+    let res_packed: EFPacking<EF> = eval_multilinear_generic::<_, _, _, _, _, _, PARALLEL>(
         evals,
         &point[..point.len() - log_width],
         &|a: EFPacking<EF>, b: EF| a * b,
@@ -110,10 +115,10 @@ where
         &|a: EFPacking<EF>, b: EF| a * b,
     );
     let res_unpacked: Vec<EF> = unpack_extension(&[res_packed]);
-    eval_multilinear(&res_unpacked, &point[point.len() - log_width..])
+    eval_multilinear::<_, _, PARALLEL>(&res_unpacked, &point[point.len() - log_width..])
 }
 
-fn eval_multilinear_generic<Coeffs, Point, Res, MCP, ARC, MRP>(
+fn eval_multilinear_generic<Coeffs, Point, Res, MCP, ARC, MRP, const PARALLEL: bool>(
     evals: &[Coeffs],
     point: &[Point],
     mul_coeffs_point: &MCP,
@@ -226,24 +231,41 @@ where
                 // Compute all eq(v_high, p_high) values and fill the `right` vector.
                 compute_eval_eq::<_, _, false>(&z1_ordered, &mut right, Point::ONE);
 
-                // Parallelized Final Summation
-                //
-                // This chain of operations computes the regrouped sum:
-                // Σ_{v_high} eq(v_high, p_high) * (Σ_{v_low} f(v_high, v_low) * eq(v_low, p_low))
-                evals
-                    .par_chunks(left.len())
-                    .zip_eq(right.par_iter())
-                    .map(|(part, &c)| {
-                        // This is the inner sum: a dot product between the evaluation chunk and the `left` basis values.
-                        mul_res_point(
-                            part.iter()
-                                .zip_eq(left.iter())
-                                .map(|(&a, &b)| mul_coeffs_point(a, b))
-                                .sum::<Res>(),
-                            c,
-                        )
-                    })
-                    .sum()
+                if PARALLEL {
+                    // Parallelized Final Summation
+                    //
+                    // This chain of operations computes the regrouped sum:
+                    // Σ_{v_high} eq(v_high, p_high) * (Σ_{v_low} f(v_high, v_low) * eq(v_low, p_low))
+                    evals
+                        .par_chunks(left.len())
+                        .zip_eq(right.par_iter())
+                        .map(|(part, &c)| {
+                            // This is the inner sum: a dot product between the evaluation chunk and the `left` basis values.
+                            mul_res_point(
+                                part.iter()
+                                    .zip_eq(left.iter())
+                                    .map(|(&a, &b)| mul_coeffs_point(a, b))
+                                    .sum::<Res>(),
+                                c,
+                            )
+                        })
+                        .sum()
+                } else {
+                    evals
+                        .chunks(left.len())
+                        .zip_eq(right.iter())
+                        .map(|(part, &c)| {
+                            // This is the inner sum: a dot product between the evaluation chunk and the `left` basis values.
+                            mul_res_point(
+                                part.iter()
+                                    .zip_eq(left.iter())
+                                    .map(|(&a, &b)| mul_coeffs_point(a, b))
+                                    .sum::<Res>(),
+                                c,
+                            )
+                        })
+                        .sum()
+                }
             } else {
                 // For moderately sized inputs (5 to 19 variables), use the recursive strategy.
                 //
@@ -255,10 +277,10 @@ where
                     // Only spawn parallel tasks if the subproblem is large enough to overcome
                     // the overhead of threading.
                     let work_size: usize = (1 << 15) / std::mem::size_of::<Coeffs>();
-                    if evals.len() > work_size {
+                    if evals.len() > work_size && PARALLEL {
                         join(
                             || {
-                                eval_multilinear_generic(
+                                eval_multilinear_generic::<_, _, _, _, _, _, PARALLEL>(
                                     f0,
                                     tail,
                                     mul_coeffs_point,
@@ -267,7 +289,7 @@ where
                                 )
                             },
                             || {
-                                eval_multilinear_generic(
+                                eval_multilinear_generic::<_, _, _, _, _, _, PARALLEL>(
                                     f1,
                                     tail,
                                     mul_coeffs_point,
@@ -279,14 +301,14 @@ where
                     } else {
                         // For smaller subproblems, execute sequentially.
                         (
-                            eval_multilinear_generic(
+                            eval_multilinear_generic::<_, _, _, _, _, _, false>(
                                 f0,
                                 tail,
                                 mul_coeffs_point,
                                 add_res_coeffs,
                                 mul_res_point,
                             ),
-                            eval_multilinear_generic(
+                            eval_multilinear_generic::<_, _, _, _, _, _, false>(
                                 f1,
                                 tail,
                                 mul_coeffs_point,
@@ -323,12 +345,12 @@ mod tests {
         let point = MultilinearPoint((0..n_vars).map(|_| rng.random()).collect::<Vec<EF>>());
 
         let time = Instant::now();
-        let res_normal = eval_multilinear(&poly, &point);
+        let res_normal = eval_multilinear::<_, _, true>(&poly, &point);
         println!("Normal eval time: {:?}", time.elapsed());
 
         let packed_poly = pack_extension(&poly);
         let time = Instant::now();
-        let res_packed = eval_packed(&packed_poly, &point);
+        let res_packed = eval_packed::<_, true>(&packed_poly, &point);
         println!("Packed eval time: {:?}", time.elapsed());
 
         assert_eq!(res_normal, res_packed);

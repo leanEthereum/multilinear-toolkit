@@ -74,7 +74,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
             Self::Base(pol) => pol.evaluate(point),
             Self::Extension(pol) => pol.evaluate(point),
             Self::BasePacked(pol) => PFPacking::<EF>::unpack_slice(pol).evaluate(point),
-            Self::ExtensionPacked(pol) => eval_packed(pol, &point.0),
+            Self::ExtensionPacked(pol) => eval_packed::<_, true>(pol, &point.0),
         }
     }
 
