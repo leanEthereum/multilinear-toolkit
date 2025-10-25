@@ -17,3 +17,6 @@ pub use eq_mle::*;
 
 mod evals;
 pub use evals::*;
+
+mod univariate_selectors;
+pub use univariate_selectors::*;
