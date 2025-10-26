@@ -1,8 +1,8 @@
 use std::any::TypeId;
 
 use backend::{
-    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, uninitialized_vec,
-    par_zip_fold_2,
+    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, par_zip_fold_2,
+    uninitialized_vec,
 };
 use fiat_shamir::*;
 use p3_field::*;
@@ -30,8 +30,9 @@ impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF,
 }
 
 impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComputation {
-    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        unreachable!()
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        // TODO this is very inneficient
+        EFPacking::<EF>::from(point[0] * point[1])
     }
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
@@ -199,9 +200,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
 }
 
 #[inline]
-pub fn sumcheck_quadratic<F, EF>(
-    ((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF)),
-) -> (EF, EF)
+pub fn sumcheck_quadratic<F, EF>(((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF))) -> (EF, EF)
 where
     F: PrimeCharacteristicRing + Copy,
     EF: Algebra<F> + Copy,
