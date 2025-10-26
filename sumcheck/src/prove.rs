@@ -8,11 +8,10 @@ use rayon::prelude::*;
 use crate::*;
 
 #[allow(clippy::too_many_arguments)]
-pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears: M,
     computation: &SC,
-    computation_packed: &SCP,
     batching_scalars: &[EF],
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
@@ -22,15 +21,16 @@ pub fn sumcheck_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF>
+        + SumcheckComputation<EF, EF>
+        + SumcheckComputationPacked<EF>
+        + 'static,
 {
     sumcheck_fold_and_prove(
         skip,
         multilinears,
         None,
         computation,
-        computation_packed,
         batching_scalars,
         eq_factor,
         is_zerofier,
@@ -41,12 +41,11 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn sumcheck_fold_and_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears: M,
     prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
-    computation_packed: &SCP,
     batching_scalars: &[EF],
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
@@ -56,8 +55,10 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF>
+        + SumcheckComputation<EF, EF>
+        + SumcheckComputationPacked<EF>
+        + 'static,
 {
     let multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut n_rounds = multilinears.by_ref().n_vars() - skip + 1;
@@ -69,7 +70,6 @@ where
         multilinears,
         prev_folding_factors,
         computation,
-        computation_packed,
         batching_scalars,
         eq_factor,
         is_zerofier,
@@ -94,12 +94,11 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
+pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears: M,
     mut prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
-    computation_packed: &SCP,
     batching_scalars: &[EF],
     mut eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     mut is_zerofier: bool,
@@ -110,8 +109,10 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, SCP, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF>
+        + SumcheckComputation<EF, EF>
+        + SumcheckComputationPacked<EF>
+        + 'static,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> =
@@ -157,7 +158,6 @@ where
             &mut multilinears,
             prev_folding_factors,
             computation,
-            computation_packed,
             &eq_factor,
             batching_scalars,
             is_zerofier,
@@ -194,12 +194,11 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compute_and_send_polynomial<'a, EF, SC, SCP>(
+fn compute_and_send_polynomial<'a, EF, SC>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     multilinears: &mut MleGroup<'a, EF>,
     prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
-    computations_packed: &SCP,
     eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     batching_scalars: &[EF],
     is_zerofier: bool,
@@ -209,8 +208,10 @@ fn compute_and_send_polynomial<'a, EF, SC, SCP>(
 ) -> DensePolynomial<EF>
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF>
+        + SumcheckComputation<EF, EF>
+        + SumcheckComputationPacked<EF>
+        + 'static,
 {
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
@@ -245,7 +246,6 @@ where
             .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
-        computation_packed: computations_packed,
         batching_scalars,
         missing_mul_factor,
         sum,

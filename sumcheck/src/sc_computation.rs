@@ -99,21 +99,19 @@ where
     }
 }
 
-pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, SCP>(
+pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
     group: &MleGroupRef<'a, EF>,
-    params: SumcheckComputeParams<'a, EF, SC, SCP>,
+    params: SumcheckComputeParams<'a, EF, SC>,
     zs: &[usize],
 ) -> Vec<(PF<EF>, EF)>
 where
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + SumcheckComputationPacked<EF> + 'static,
 {
     let SumcheckComputeParams {
         skips,
         eq_mle,
         folding_factors,
         computation,
-        computation_packed,
         first_eq_factor,
         batching_scalars,
         missing_mul_factor,
@@ -205,7 +203,7 @@ where
                 skips,
                 eq_mle,
                 folding_factors,
-                computation_packed,
+                computation,
                 batching_scalars,
                 missing_mul_factor,
                 packed_fold_size,
@@ -219,7 +217,7 @@ where
                 skips,
                 eq_mle,
                 folding_factors,
-                computation_packed,
+                computation,
                 batching_scalars,
                 missing_mul_factor,
                 packed_fold_size,
@@ -256,22 +254,23 @@ where
     }
 }
 
-pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, SCP>(
+pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
     prev_folding_factors: &[EF],
     group: &MleGroupRef<'a, EF>,
-    params: SumcheckComputeParams<'a, EF, SC, SCP>,
+    params: SumcheckComputeParams<'a, EF, SC>,
     zs: &[usize],
 ) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>)
 where
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + 'static,
-    SCP: SumcheckComputationPacked<EF>,
+    SC: SumcheckComputation<PF<EF>, EF>
+        + SumcheckComputation<EF, EF>
+        + SumcheckComputationPacked<EF>
+        + 'static,
 {
     let SumcheckComputeParams {
         skips,
         eq_mle,
         folding_factors,
         computation,
-        computation_packed,
         first_eq_factor,
         batching_scalars,
         missing_mul_factor,
@@ -400,7 +399,7 @@ where
                 skips,
                 eq_mle,
                 folding_factors,
-                computation_packed,
+                computation,
                 batching_scalars,
                 missing_mul_factor,
                 compute_fold_size,
@@ -416,7 +415,7 @@ where
                 skips,
                 eq_mle,
                 folding_factors,
-                computation_packed,
+                computation,
                 batching_scalars,
                 missing_mul_factor,
                 compute_fold_size,
@@ -457,13 +456,12 @@ where
 }
 
 #[derive(Debug)]
-pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC, SCP> {
+pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC> {
     pub skips: usize,
     pub eq_mle: Option<&'a MleOwned<EF>>,
     pub first_eq_factor: Option<EF>,
     pub folding_factors: &'a [Vec<PF<EF>>],
     pub computation: &'a SC,
-    pub computation_packed: &'a SCP,
     pub batching_scalars: &'a [EF],
     pub missing_mul_factor: Option<EF>,
     pub sum: EF,

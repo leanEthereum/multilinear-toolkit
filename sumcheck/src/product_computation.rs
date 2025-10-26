@@ -97,7 +97,6 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         MleGroupOwned::ExtensionPacked(folded),
         Some(vec![EF::ONE - r2, r2]),
         &ProductComputation,
-        &ProductComputation,
         &[],
         None,
         false,
