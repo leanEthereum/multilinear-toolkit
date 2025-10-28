@@ -6,51 +6,71 @@ use rayon::prelude::*;
 
 use crate::*;
 
-pub fn verify_parallel_cubic_sumcheck<EF>(
+pub fn verify_poseidon_gkr_sumcheck<EF>(
     verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
     skips: usize,
     point: &[EF],
     claimed_cubes: Vec<EF>,
-) -> Result<(Vec<EF>, Vec<EF>), ProofError>
+    claimed_transparent_evals: Vec<EF>,
+) -> Result<(Vec<EF>, Vec<EF>, Vec<EF>), ProofError>
 where
     EF: ExtensionField<PF<EF>>,
 {
     let res = sumcheck_verify_with_univariate_skip_in_parallel(
         verifier_state,
-        4,
+        [
+            vec![4; claimed_cubes.len()],
+            vec![2; claimed_transparent_evals.len()],
+        ]
+        .concat(),
         point.len() + skips - 1,
         skips,
-        claimed_cubes.len(),
     )?;
 
-    for ((cube, _), claimed_cube) in res.iter().zip(&claimed_cubes) {
-        if cube != claimed_cube {
+    for ((v1, _), v2) in res
+        .iter()
+        .zip(claimed_cubes.iter().chain(claimed_transparent_evals.iter()))
+    {
+        if v1 != v2 {
             return Err(ProofError::InvalidProof);
         }
     }
 
-    let inner_values = verifier_state.next_extension_scalars_vec(claimed_cubes.len())?;
+    let next_cube_evals = verifier_state.next_extension_scalars_vec(claimed_cubes.len())?;
+    let next_transparent_values =
+        verifier_state.next_extension_scalars_vec(claimed_transparent_evals.len())?;
 
     let sc_point = res[0].1.point.0.clone();
     let eq_eval = eq_poly_with_skip(&sc_point, point, skips);
-    for ((_, eval), inner_value) in res.into_iter().zip(&inner_values) {
+    for ((_, eval), inner_value) in res[..claimed_cubes.len()].into_iter().zip(&next_cube_evals) {
         if eq_eval * inner_value.cube() != eval.value {
             return Err(ProofError::InvalidProof);
         }
     }
+    for ((_, eval), inner_value) in res[claimed_cubes.len()..]
+        .into_iter()
+        .zip(&next_transparent_values)
+    {
+        if eq_eval * *inner_value != eval.value {
+            return Err(ProofError::InvalidProof);
+        }
+    }
 
-    Ok((sc_point, inner_values))
+    Ok((sc_point, next_cube_evals, next_transparent_values))
 }
 
-pub fn prove_parallel_cubic_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
+pub fn prove_poseidon_gkr_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
     mut skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
-    multilinears: Vec<&[PFPacking<EF>]>,
+    multilinears_to_cube: Vec<&[PFPacking<EF>]>,
+    multilinears_transparent: Vec<&[PFPacking<EF>]>,
     mut eq_point: Vec<EF>,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    mut sums: Vec<EF>,
-) -> (MultilinearPoint<EF>, Vec<EF>) {
-    let mut multilinears = multilinears
+    mut claimed_cubes: Vec<EF>,
+    mut claimed_transparent_evals: Vec<EF>,
+) -> (Vec<EF>, Vec<EF>, Vec<EF>) {
+    let mut multilinears = multilinears_to_cube
         .into_iter()
+        .chain(multilinears_transparent.into_iter())
         .map(|m| Mle::Ref(MleRef::BasePacked(m)))
         .collect::<Vec<_>>();
     let n_rounds = multilinears[0].by_ref().n_vars() - skip + 1;
@@ -75,13 +95,14 @@ pub fn prove_parallel_cubic_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
             ));
         }
 
-        let ps = compute_and_send_cubic_polynomials(
+        let ps = compute_and_send_poseidon_gkr_polynomials(
             skip,
             &mut multilinears,
             prev_folding_factors,
             (&eq_point, &eq_mle),
             prover_state,
-            &sums,
+            &claimed_cubes,
+            &claimed_transparent_evals,
             missing_mul_factors,
         );
         let challenge = prover_state.sample();
@@ -91,7 +112,8 @@ pub fn prove_parallel_cubic_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
             skip,
             &mut n_vars,
             (&mut eq_point, &mut eq_mle),
-            &mut sums,
+            &mut claimed_cubes,
+            &mut claimed_transparent_evals,
             &mut missing_mul_factors,
             challenge,
             &ps,
@@ -113,27 +135,34 @@ pub fn prove_parallel_cubic_sumcheck<'a, EF: ExtensionField<PF<EF>>>(
                 .as_constant()
         })
         .collect::<Vec<_>>();
-    prover_state.add_extension_scalars(&inner_evals);
-    (MultilinearPoint(challenges), inner_evals)
+
+    let next_cube_evals = inner_evals[..claimed_cubes.len()].to_vec();
+    let next_transparent_values = inner_evals[claimed_cubes.len()..].to_vec();
+    prover_state.add_extension_scalars(&next_cube_evals);
+    prover_state.add_extension_scalars(&next_transparent_values);
+    (challenges, next_cube_evals, next_transparent_values)
 }
 
-fn compute_and_send_cubic_polynomials<'a, EF: ExtensionField<PF<EF>>>(
+fn compute_and_send_poseidon_gkr_polynomials<'a, EF: ExtensionField<PF<EF>>>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     multilinears: &mut Vec<Mle<'a, EF>>,
     prev_folding_factors: Option<Vec<EF>>,
     eq_factor: (&[EF], &MleOwned<EF>), // (a, b, c ...), eq_poly(b, c, ...)
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    sums: &[EF],
+    claimed_cubes: &[EF],
+    claimed_transparent_evals: &[EF],
     missing_mul_factor: Option<EF>,
 ) -> Vec<DensePolynomial<EF>> {
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
-    let computation_degree = 3;
-    let zs = (0..=computation_degree * ((1 << skips) - 1))
+    let zs_cubes = (0..=3 * ((1 << skips) - 1))
+        .filter(|&i| i != (1 << skips) - 1)
+        .collect::<Vec<_>>();
+    let zs_transparent = (0..=((1 << skips) - 1))
         .filter(|&i| i != (1 << skips) - 1)
         .collect::<Vec<_>>();
 
-    let compute_folding_factors = zs
+    let compute_folding_factors_cubes = zs_cubes
         .iter()
         .map(|&z| {
             selectors
@@ -143,39 +172,85 @@ fn compute_and_send_cubic_polynomials<'a, EF: ExtensionField<PF<EF>>>(
         })
         .collect::<Vec<Vec<PF<EF>>>>();
 
-    let sc_params = (0..multilinears.len())
+    let compute_folding_factors_transparent = zs_transparent
+        .iter()
+        .map(|&z| {
+            selectors
+                .iter()
+                .map(|s| s.evaluate(PF::<EF>::from_usize(z)))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<Vec<PF<EF>>>>();
+
+    let sc_params_cube = (0..claimed_cubes.len())
         .map(|i| SumcheckComputeParams {
             skips,
             eq_mle: Some(&eq_factor.1),
             first_eq_factor: Some(eq_factor.0[0]),
-            folding_factors: &compute_folding_factors,
+            folding_factors: &compute_folding_factors_cubes,
             computation: &CubeComputation {},
             batching_scalars: &[],
             missing_mul_factor,
-            sum: sums[i],
+            sum: claimed_cubes[i],
         })
         .collect::<Vec<_>>();
 
-    let mut p_evals: Vec<Vec<(PF<EF>, EF)>> = multilinears
+    let sc_params_transparent = (0..claimed_transparent_evals.len())
+        .map(|i| SumcheckComputeParams {
+            skips,
+            eq_mle: Some(&eq_factor.1),
+            first_eq_factor: Some(eq_factor.0[0]),
+            folding_factors: &compute_folding_factors_transparent,
+            computation: &TransparentComputation {},
+            batching_scalars: &[],
+            missing_mul_factor,
+            sum: claimed_transparent_evals[i],
+        })
+        .collect::<Vec<_>>();
+
+    let (cube_multilinears, transparent_multilinears) =
+        multilinears.split_at_mut(claimed_cubes.len());
+    let mut p_evals: Vec<Vec<(PF<EF>, EF)>> = cube_multilinears
         .par_iter_mut()
-        .zip(sc_params)
+        .zip(sc_params_cube)
         .map(|(poly, sc_param)| match &prev_folding_factors {
             Some(prev_folding_factors) => {
                 let (computed_p_evals, folded_multilinears) = fold_and_sumcheck_compute(
                     prev_folding_factors,
                     &poly.by_ref().as_group(),
                     sc_param,
-                    &zs,
+                    &zs_cubes,
                 );
                 *poly = Mle::Owned(folded_multilinears.as_single());
                 computed_p_evals
             }
-            None => sumcheck_compute(&poly.by_ref().as_group(), sc_param, &zs),
+            None => sumcheck_compute(&poly.by_ref().as_group(), sc_param, &zs_cubes),
         })
+        .chain(
+            transparent_multilinears
+                .par_iter_mut()
+                .zip(sc_params_transparent)
+                .map(|(poly, sc_param)| match &prev_folding_factors {
+                    Some(prev_folding_factors) => {
+                        let (computed_p_evals, folded_multilinears) = fold_and_sumcheck_compute(
+                            prev_folding_factors,
+                            &poly.by_ref().as_group(),
+                            sc_param,
+                            &zs_transparent,
+                        );
+                        *poly = Mle::Owned(folded_multilinears.as_single());
+                        computed_p_evals
+                    }
+                    None => sumcheck_compute(&poly.by_ref().as_group(), sc_param, &zs_transparent),
+                }),
+        )
         .collect::<Vec<_>>();
 
     let mut inerpolated = vec![];
-    for (evals, &sum) in p_evals.iter_mut().zip(sums) {
+    for (evals, &sum) in p_evals
+        .iter_mut()
+        .zip(claimed_cubes.iter().chain(claimed_transparent_evals.iter()))
+    {
         let missing_sum_z = {
             (sum - (0..(1 << skips) - 1)
                 .map(|i| evals[i].1 * selectors[i].evaluate(eq_factor.0[0]))
@@ -223,12 +298,17 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     n_vars: &mut usize,
     eq_factor: (&mut Vec<EF>, &mut MleOwned<EF>), // (a, b, c ...), eq_poly(b, c, ...)
-    sums: &mut Vec<EF>,
+    claimed_cubes: &mut Vec<EF>,
+    claimed_transparent_evals: &mut Vec<EF>,
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
     p: &[DensePolynomial<EF>],
 ) -> Option<Vec<EF>> {
-    *sums = p
+    *claimed_cubes = p[..claimed_cubes.len()]
+        .iter()
+        .map(|poly| poly.evaluate(challenge))
+        .collect::<Vec<_>>();
+    *claimed_transparent_evals = p[claimed_cubes.len()..]
         .iter()
         .map(|poly| poly.evaluate(challenge))
         .collect::<Vec<_>>();
@@ -283,5 +363,33 @@ impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for CubeComputati
     }
     fn degree(&self) -> usize {
         3
+    }
+}
+
+#[derive(Debug)]
+struct TransparentComputation;
+
+impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
+    for TransparentComputation
+{
+    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
+        // TODO avoid embedding overhead
+        EF::from(point[0])
+    }
+    fn degree(&self) -> usize {
+        1
+    }
+}
+
+impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for TransparentComputation {
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        // TODO avoid embedding overhead
+        EFPacking::<EF>::from(point[0])
+    }
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        point[0]
+    }
+    fn degree(&self) -> usize {
+        1
     }
 }
