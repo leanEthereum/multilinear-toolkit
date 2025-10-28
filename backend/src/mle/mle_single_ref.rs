@@ -86,4 +86,22 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
             Self::ExtensionPacked(_) => Mle::Ref(self.clone()),
         }
     }
+
+    pub fn unpack(&self) -> Mle<'a, EF> {
+        match self {
+            Self::Base(_) => Mle::Ref(self.clone()),
+            Self::Extension(_) => Mle::Ref(self.clone()),
+            Self::BasePacked(v) => Mle::Ref(MleRef::Base(PFPacking::<EF>::unpack_slice(v))),
+            Self::ExtensionPacked(v) => Mle::Owned(MleOwned::Extension(unpack_extension(v))),
+        }
+    }
+
+    pub fn as_group(&self) -> MleGroupRef<'a, EF> {
+        match self {
+            Self::Base(v) => MleGroupRef::Base(vec![v]),
+            Self::Extension(v) => MleGroupRef::Extension(vec![v]),
+            Self::BasePacked(v) => MleGroupRef::BasePacked(vec![v]),
+            Self::ExtensionPacked(v) => MleGroupRef::ExtensionPacked(vec![v]),
+        }
+    }
 }

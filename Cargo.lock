@@ -444,6 +444,7 @@ dependencies = [
  "p3-koala-bear",
  "p3-matrix",
  "p3-util",
+ "rand",
  "rayon",
 ]
 

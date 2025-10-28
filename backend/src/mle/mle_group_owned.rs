@@ -98,4 +98,25 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
             ),
         }
     }
+
+    pub fn as_single(self) -> MleOwned<EF> {
+        match self {
+            Self::Base(mut v) => {
+                assert!(v.len() == 1);
+                MleOwned::Base(v.pop().unwrap())
+            }
+            Self::Extension(mut v) => {
+                assert!(v.len() == 1);
+                MleOwned::Extension(v.pop().unwrap())
+            }
+            Self::BasePacked(mut v) => {
+                assert!(v.len() == 1);
+                MleOwned::BasePacked(v.pop().unwrap())
+            }
+            Self::ExtensionPacked(mut v) => {
+                assert!(v.len() == 1);
+                MleOwned::ExtensionPacked(v.pop().unwrap())
+            }
+        }
+    }
 }
