@@ -20,3 +20,6 @@ pub use evals::*;
 
 mod univariate_selectors;
 pub use univariate_selectors::*;
+
+mod matrix;
+pub use matrix::*;
