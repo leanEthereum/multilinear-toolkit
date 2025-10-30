@@ -64,6 +64,9 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         (MleRef::Base(evals), MleRef::Extension(weights)) => {
             compute_product_sumcheck_polynomial(evals, &weights, sum, |e| vec![e])
         }
+        (MleRef::Extension(evals), MleRef::Extension(weights)) => {
+            compute_product_sumcheck_polynomial(evals, &weights, sum, |e| vec![e])
+        }
         _ => unimplemented!(),
     };
 
@@ -97,6 +100,11 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
             (second_sumcheck_poly, MleGroupOwned::ExtensionPacked(folded))
         }
         (MleRef::Base(evals), MleRef::Extension(weights)) => {
+            let (second_sumcheck_poly, folded) =
+                fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| vec![e]);
+            (second_sumcheck_poly, MleGroupOwned::Extension(folded))
+        }
+        (MleRef::Extension(evals), MleRef::Extension(weights)) => {
             let (second_sumcheck_poly, folded) =
                 fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| vec![e]);
             (second_sumcheck_poly, MleGroupOwned::Extension(folded))
