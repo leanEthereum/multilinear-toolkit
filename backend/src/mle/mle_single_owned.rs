@@ -1,7 +1,7 @@
 use fiat_shamir::*;
 use p3_field::ExtensionField;
 
-use crate::{pack_extension, Mle, MleRef, MultilinearPoint};
+use crate::{Mle, MleRef, MultilinearPoint, pack_extension, unpack_extension};
 use p3_field::PackedValue;
 
 #[derive(Debug, Clone)]
@@ -111,5 +111,46 @@ impl<EF: ExtensionField<PF<EF>>> MleOwned<EF> {
             Self::BasePacked(_) => Mle::Ref(self.by_ref()),
             Self::ExtensionPacked(_) => Mle::Ref(self.by_ref()),
         }
+    }
+
+    pub fn unpack<'a>(&'a self) -> Mle<'a, EF> {
+        match self {
+            Self::Base(v) => Mle::Ref(MleRef::Base(v)),
+            Self::Extension(v) => Mle::Ref(MleRef::Extension(v)),
+            Self::BasePacked(pb) => Mle::Ref(MleRef::Base(PFPacking::<EF>::unpack_slice(pb))),
+            Self::ExtensionPacked(ep) => Mle::Owned(MleOwned::Extension(unpack_extension(ep))),
+        }
+    }
+
+    pub fn is_packed(&self) -> bool {
+        self.by_ref().is_packed()
+    }
+
+    pub fn n_vars(&self) -> usize {
+        self.by_ref().n_vars()
+    }
+
+    pub fn halve(mut self) -> Self {
+        match &mut self {
+            Self::Base(v) => {
+                v.truncate(v.len() / 2);
+            }
+            Self::Extension(v) => {
+                v.truncate(v.len() / 2);
+            }
+            Self::BasePacked(v) => {
+                if v.len() == 1 {
+                    return self.unpack().by_ref().clone_to_owned().halve();
+                }
+                v.truncate(v.len() / 2);
+            }
+            Self::ExtensionPacked(v) => {
+                if v.len() == 1 {
+                    return self.unpack().by_ref().clone_to_owned().halve();
+                }
+                v.truncate(v.len() / 2);
+            }
+        }
+        self
     }
 }

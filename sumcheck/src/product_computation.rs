@@ -61,6 +61,9 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
                 EFPacking::<EF>::to_ext_iter([e]).collect()
             })
         }
+        (MleRef::Base(evals), MleRef::Extension(weights)) => {
+            compute_product_sumcheck_polynomial(evals, &weights, sum, |e| vec![e])
+        }
         _ => unimplemented!(),
     };
 
@@ -69,20 +72,34 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
     let r1: EF = prover_state.sample();
     sum = first_sumcheck_poly.evaluate(r1);
 
-    if n_rounds < 2 {
-        unimplemented!()
+    if n_rounds == 1 {
+        return (
+            MultilinearPoint(vec![r1]),
+            sum,
+            pol_a.fold(&[EF::ONE - r1, r1]),
+            pol_b.fold(&[EF::ONE - r1, r1]),
+        );
     }
 
     let (second_sumcheck_poly, folded) = match (pol_a, pol_b) {
         (MleRef::BasePacked(evals), MleRef::ExtensionPacked(weights)) => {
-            fold_and_compute_product_sumcheck_polynomial(&evals, &weights, r1, sum, |e| {
-                EFPacking::<EF>::to_ext_iter([e]).collect()
-            })
+            let (second_sumcheck_poly, folded) =
+                fold_and_compute_product_sumcheck_polynomial(&evals, &weights, r1, sum, |e| {
+                    EFPacking::<EF>::to_ext_iter([e]).collect()
+                });
+            (second_sumcheck_poly, MleGroupOwned::ExtensionPacked(folded))
         }
         (MleRef::ExtensionPacked(evals), MleRef::ExtensionPacked(weights)) => {
-            fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| {
-                EFPacking::<EF>::to_ext_iter([e]).collect()
-            })
+            let (second_sumcheck_poly, folded) =
+                fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| {
+                    EFPacking::<EF>::to_ext_iter([e]).collect()
+                });
+            (second_sumcheck_poly, MleGroupOwned::ExtensionPacked(folded))
+        }
+        (MleRef::Base(evals), MleRef::Extension(weights)) => {
+            let (second_sumcheck_poly, folded) =
+                fold_and_compute_product_sumcheck_polynomial(evals, &weights, r1, sum, |e| vec![e]);
+            (second_sumcheck_poly, MleGroupOwned::Extension(folded))
         }
         _ => unimplemented!(),
     };
@@ -94,7 +111,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
 
     let (mut challenges, folds, sum) = sumcheck_prove_many_rounds(
         1,
-        MleGroupOwned::ExtensionPacked(folded),
+        folded,
         Some(vec![EF::ONE - r2, r2]),
         &ProductComputation,
         &[],

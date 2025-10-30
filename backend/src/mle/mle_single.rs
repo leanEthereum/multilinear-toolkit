@@ -52,4 +52,26 @@ impl<'a, EF: ExtensionField<PF<EF>>> Mle<'a, EF> {
             Self::Ref(poly) => poly.pack(),
         }
     }
+
+    pub fn unpack(&'a self) -> Self {
+        match self {
+            Self::Owned(poly) => poly.unpack(),
+            Self::Ref(poly) => poly.unpack(),
+        }
+    }
+
+    pub fn is_packed(&self) -> bool {
+        self.by_ref().is_packed()
+    }
+
+    pub fn n_vars(&self) -> usize {
+        self.by_ref().n_vars()
+    }
+
+    pub fn as_owned_or_clone(self) -> MleOwned<EF> {
+        match self {
+            Self::Owned(o) => o,
+            Self::Ref(r) => r.clone_to_owned(),
+        }
+    }
 }

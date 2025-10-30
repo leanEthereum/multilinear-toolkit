@@ -127,6 +127,7 @@ where
             });
             (eq_point, eq_mle)
         });
+
     let mut n_vars = multilinears.by_ref().n_vars();
     if let Some(prev_folding_factors) = &prev_folding_factors {
         n_vars -= log2_strict_usize(prev_folding_factors.len());
@@ -134,10 +135,10 @@ where
     if let Some((eq_point, eq_mle)) = &eq_factor {
         assert_eq!(eq_point.len(), n_vars - skip + 1);
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
-        assert_eq!(
-            eq_mle.by_ref().is_packed(),
-            multilinears.by_ref().is_packed()
-        );
+        if eq_mle.by_ref().is_packed() && !multilinears.is_packed() {
+            assert!(eq_point.len() < packing_log_width::<EF>());
+            multilinears = multilinears.by_ref().unpack().into();
+        }
     }
 
     let mut challenges = Vec::new();
@@ -147,9 +148,7 @@ where
             // unpack
             multilinears = multilinears.by_ref().unpack().into();
             if let Some((_, eq_mle)) = &mut eq_factor {
-                *eq_mle = MleOwned::Extension(unpack_extension(
-                    eq_mle.by_ref().as_extension_packed().unwrap(),
-                ));
+                *eq_mle = eq_mle.by_ref().unpack().as_owned_or_clone();
             }
         }
 

@@ -55,4 +55,11 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
             Self::Ref(_) => None,
         }
     }
+
+    pub fn is_packed(&self) -> bool {
+        match self {
+            Self::Owned(owned) => owned.is_packed(),
+            Self::Ref(r) => r.is_packed(),
+        }
+    }
 }
