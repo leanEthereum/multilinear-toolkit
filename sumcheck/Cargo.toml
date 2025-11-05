@@ -13,7 +13,7 @@ constraints-folder.workspace = true
 
 fiat-shamir.workspace = true
 
-rayon.workspace = true
+p3-maybe-rayon.workspace = true
 
 [dev-dependencies]
 p3-koala-bear.workspace = true

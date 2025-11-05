@@ -1,5 +1,5 @@
 use p3_field::Field;
-use rayon::prelude::*;
+use p3_maybe_rayon::prelude::*;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};

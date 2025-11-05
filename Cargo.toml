@@ -19,7 +19,7 @@ p3-air = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-m
 p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 
-rayon = "*"
+p3-maybe-rayon = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig", features = [] }
 rand = "*"
 itertools = "*"
 tracing = "*"
@@ -37,4 +37,8 @@ sumcheck.workspace = true
 p3-field.workspace = true
 p3-util.workspace = true
 fiat-shamir.workspace = true
-rayon.workspace = true
+p3-maybe-rayon.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["p3-maybe-rayon/parallel", "p3-util/parallel"]

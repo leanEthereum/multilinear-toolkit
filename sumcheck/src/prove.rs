@@ -3,7 +3,7 @@ use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
 use p3_util::log2_strict_usize;
-use rayon::prelude::*;
+use p3_maybe_rayon::prelude::*;
 
 use crate::*;
 

@@ -9,7 +9,7 @@ use p3_field::dot_product;
 use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_util::log2_strict_usize;
-use rayon::prelude::*;
+use p3_maybe_rayon::prelude::*;
 use std::any::TypeId;
 use std::ops::Add;
 use std::ops::Mul;

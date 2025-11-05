@@ -16,9 +16,9 @@ dependencies = [
  "itertools",
  "p3-field",
  "p3-koala-bear",
+ "p3-maybe-rayon",
  "p3-util",
  "rand",
- "rayon",
  "tracing",
 ]
 
@@ -114,8 +114,8 @@ dependencies = [
  "constraints-folder",
  "fiat-shamir",
  "p3-field",
+ "p3-maybe-rayon",
  "p3-util",
- "rayon",
  "sumcheck",
 ]
 
@@ -237,6 +237,9 @@ dependencies = [
 name = "p3-maybe-rayon"
 version = "0.3.0"
 source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-multisig#2a640fd24da3ea62557a1cb65ac51fbbe1f9bfc6"
+dependencies = [
+ "rayon",
+]
 
 [[package]]
 name = "p3-mds"
@@ -299,6 +302,7 @@ name = "p3-util"
 version = "0.3.0"
 source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-multisig#2a640fd24da3ea62557a1cb65ac51fbbe1f9bfc6"
 dependencies = [
+ "rayon",
  "serde",
 ]
 
@@ -443,8 +447,8 @@ dependencies = [
  "p3-field",
  "p3-koala-bear",
  "p3-matrix",
+ "p3-maybe-rayon",
  "p3-util",
- "rayon",
 ]
 
 [[package]]

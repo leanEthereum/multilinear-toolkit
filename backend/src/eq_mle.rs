@@ -2,7 +2,7 @@ use crate::*;
 use fiat_shamir::{EFPacking, PF};
 use p3_field::*;
 use p3_util::{iter_array_chunks_padded, log2_strict_usize};
-use rayon::prelude::*;
+use p3_maybe_rayon::prelude::*;
 
 /// Log of number of threads to spawn.
 /// Long term this should be a modifiable parameter and potentially be in an optimization file somewhere.
@@ -249,7 +249,7 @@ pub fn compute_eval_eq_packed<EF, const INITIALIZED: bool>(
         let mut output_no_packing = EF::zero_vec(1 << eval.len());
         eval_eq_basic::<_, _, _, false>(eval, &mut output_no_packing, scalar);
         out.par_iter_mut()
-            .zip(output_no_packing.into_par_iter().chunks(packing_width))
+            .zip(output_no_packing.par_chunks_exact(packing_width))
             .for_each(|(out_elem, chunk)| {
                 if INITIALIZED {
                     *out_elem += EF::ExtensionPacking::from_ext_slice(&chunk);
@@ -397,7 +397,7 @@ pub fn compute_eval_eq_base_packed<F, EF, const INITIALIZED: bool>(
         let mut output_no_packing = EF::zero_vec(1 << eval.len());
         eval_eq_basic::<_, _, _, false>(eval, &mut output_no_packing, scalar);
         out.par_iter_mut()
-            .zip(output_no_packing.into_par_iter().chunks(packing_width))
+            .zip(output_no_packing.par_chunks_exact(packing_width))
             .for_each(|(out_elem, chunk)| {
                 if INITIALIZED {
                     *out_elem += EF::ExtensionPacking::from_ext_slice(&chunk);

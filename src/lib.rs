@@ -8,5 +8,5 @@ pub mod prelude {
     pub use p3_field::*;
     pub use p3_util::*;
 
-    pub use rayon::prelude::*;
+    pub use p3_maybe_rayon::prelude::*;
 }
