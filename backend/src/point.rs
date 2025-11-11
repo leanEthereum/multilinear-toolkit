@@ -129,3 +129,26 @@ impl<F: Field> Evaluation<F> {
         self.point.num_variables()
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MultiEvaluation<F> {
+    pub point: MultilinearPoint<F>,
+    pub values: Vec<F>,
+}
+
+impl<F: Field> MultiEvaluation<F> {
+    pub fn new(point: impl Into<MultilinearPoint<F>>, values: Vec<F>) -> Self {
+        Self {
+            point: point.into(),
+            values,
+        }
+    }
+
+    pub fn num_variables(&self) -> usize {
+        self.point.num_variables()
+    }
+
+    pub fn num_values(&self) -> usize {
+        self.values.len()
+    }
+}
