@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use p3_field::*;
+use rand::{Rng, distr::StandardUniform};
 
 /// A point `(x_1, ..., x_n)` in `F^n` for some field `F`.
 ///
@@ -90,6 +91,17 @@ where
     #[must_use]
     pub fn embed<EF: ExtensionField<F>>(&self) -> MultilinearPoint<EF> {
         MultilinearPoint(self.0.iter().map(|&x| EF::from(x)).collect())
+    }
+
+    pub fn random<R: Rng>(rng: &mut R, num_vars: usize) -> Self
+    where
+        StandardUniform: rand::distr::Distribution<F>,
+    {
+        let mut v = Vec::with_capacity(num_vars);
+        for _ in 0..num_vars {
+            v.push(rng.random());
+        }
+        Self(v)
     }
 }
 
