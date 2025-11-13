@@ -9,4 +9,5 @@ pub mod prelude {
     pub use p3_util::*;
 
     pub use rayon::prelude::*;
+    pub use rayon;
 }
