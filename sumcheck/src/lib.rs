@@ -14,3 +14,6 @@ pub use product_computation::*;
 
 mod quotient_computation;
 pub use quotient_computation::*;
+
+mod cube_computation;
+pub use cube_computation::*;
