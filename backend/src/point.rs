@@ -130,7 +130,7 @@ impl<F: Field> Evaluation<F> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct MultiEvaluation<F> {
     pub point: MultilinearPoint<F>,
     pub values: Vec<F>,
