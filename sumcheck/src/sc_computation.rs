@@ -7,7 +7,6 @@ use p3_field::PackedFieldExtension;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::dot_product;
 use p3_field::{ExtensionField, Field};
-use p3_matrix::dense::RowMajorMatrixView;
 use p3_util::log2_strict_usize;
 use rayon::prelude::*;
 use std::any::TypeId;
@@ -26,13 +25,8 @@ where
     A: for<'a> Air<ConstraintFolder<'a, NF, EF>>,
 {
     fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF {
-        if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
-        } else {
-            assert_eq!(point.len(), A::width(self));
-        }
         let mut folder = ConstraintFolder {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: point,
             alpha_powers,
             accumulator: EF::ZERO,
             constraint_index: 0,
@@ -61,13 +55,8 @@ where
         + for<'a> Air<ConstraintFolderPackedExtension<'a, EF>>,
 {
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
-        if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
-        } else {
-            assert_eq!(point.len(), A::width(self));
-        }
         let mut folder = ConstraintFolderPackedBase {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: point,
             alpha_powers,
             accumulator: Default::default(),
             constraint_index: 0,
@@ -78,13 +67,8 @@ where
     }
 
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
-        if self.structured() {
-            assert_eq!(point.len(), A::width(self) * 2);
-        } else {
-            assert_eq!(point.len(), A::width(self));
-        }
         let mut folder = ConstraintFolderPackedExtension {
-            main: RowMajorMatrixView::new(point, A::width(self)),
+            main: point,
             alpha_powers,
             accumulator: Default::default(),
             constraint_index: 0,

@@ -1,7 +1,6 @@
 use fiat_shamir::*;
 use p3_air::AirBuilder;
 use p3_field::{ExtensionField, Field};
-use p3_matrix::dense::RowMajorMatrixView;
 
 #[derive(Debug)]
 pub struct ConstraintFolder<'a, NF, EF>
@@ -9,7 +8,7 @@ where
     NF: ExtensionField<PF<EF>>,
     EF: ExtensionField<NF>,
 {
-    pub main: RowMajorMatrixView<'a, NF>,
+    pub main: &'a [NF],
     pub alpha_powers: &'a [EF],
     pub accumulator: EF,
     pub constraint_index: usize,
@@ -23,26 +22,10 @@ where
     type F = PF<EF>;
     type Expr = NF;
     type Var = NF;
-    type M = RowMajorMatrixView<'a, NF>;
 
     #[inline]
-    fn main(&self) -> Self::M {
+    fn main(&self) -> &[NF] {
         self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
     }
 
     #[inline]

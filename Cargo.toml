@@ -12,12 +12,12 @@ resolver = "2"
 members = ["backend", "constraints_folder", "sumcheck"]
 
 [workspace.dependencies]
-fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git" }
-p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-air = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
-p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git", branch = "modular-precompiles" }
+p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-air = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
+p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
 
 rayon = "*"
 rand = "*"
@@ -25,9 +25,9 @@ itertools = "*"
 tracing = "*"
 
 # Local dependencies
-backend = { path = "backend"}
-constraints-folder = { path = "constraints_folder"}
-sumcheck = { path = "sumcheck"}
+backend = { path = "backend" }
+constraints-folder = { path = "constraints_folder" }
+sumcheck = { path = "sumcheck" }
 
 
 [dependencies]
@@ -38,3 +38,15 @@ p3-field.workspace = true
 p3-util.workspace = true
 fiat-shamir.workspace = true
 rayon.workspace = true
+
+# [patch."https://github.com/TomWambsgans/Plonky3.git"]
+# p3-koala-bear = { path = "../Plonky3/koala-bear" }
+# p3-field = { path = "../Plonky3/field" }
+# p3-poseidon2 = { path = "../Plonky3/poseidon2" }
+# p3-matrix = { path = "../Plonky3/matrix" }
+# p3-symmetric = { path = "../Plonky3/symmetric" }
+# p3-air = { path = "../Plonky3/air" }
+# p3-uni-stark = { path = "../Plonky3/uni-stark" }
+# p3-dft = { path = "../Plonky3/dft" }
+# p3-challenger = { path = "../Plonky3/challenger" }
+# p3-monty-31 = { path = "../Plonky3/monty-31" }

@@ -1,11 +1,10 @@
 use fiat_shamir::*;
 use p3_air::AirBuilder;
 use p3_field::ExtensionField;
-use p3_matrix::dense::RowMajorMatrixView;
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: RowMajorMatrixView<'a, PFPacking<EF>>,
+    pub main: &'a [PFPacking<EF>],
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
@@ -15,30 +14,10 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
     type F = PFPacking<EF>;
     type Expr = PFPacking<EF>;
     type Var = PFPacking<EF>;
-    type M = RowMajorMatrixView<'a, PFPacking<EF>>;
 
     #[inline]
-    fn main(&self) -> Self::M {
+    fn main(&self) -> &[PFPacking<EF>] {
         self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    /// Returns an expression indicating rows where transition constraints should be checked.
-    ///
-    /// # Panics
-    /// This function panics if `size` is not `2`.
-    #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
     }
 
     #[inline]
@@ -64,7 +43,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: RowMajorMatrixView<'a, EFPacking<EF>>,
+    pub main: &'a [EFPacking<EF>],
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
@@ -74,26 +53,10 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
     type F = PFPacking<EF>;
     type Expr = EFPacking<EF>;
     type Var = EFPacking<EF>;
-    type M = RowMajorMatrixView<'a, EFPacking<EF>>;
 
     #[inline]
-    fn main(&self) -> Self::M {
-        self.main
-    }
-
-    #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
+    fn main(&self) -> &[EFPacking<EF>] {
+        &self.main
     }
 
     #[inline]
