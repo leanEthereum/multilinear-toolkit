@@ -61,7 +61,7 @@ where
         + 'static,
 {
     let multilinears: MleGroup<'a, EF> = multilinears.into();
-    let mut n_rounds = multilinears.by_ref().n_vars() - skip + 1;
+    let mut n_rounds = multilinears.by_ref().n_vars() + 1 - skip;
     if let Some(prev_folding_factors) = &prev_folding_factors {
         n_rounds -= log2_strict_usize(prev_folding_factors.len());
     }
@@ -133,7 +133,7 @@ where
         n_vars -= log2_strict_usize(prev_folding_factors.len());
     }
     if let Some((eq_point, eq_mle)) = &eq_factor {
-        assert_eq!(eq_point.len(), n_vars - skip + 1);
+        assert_eq!(eq_point.len(), n_vars + 1 - skip);
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
         if eq_mle.by_ref().is_packed() && !multilinears.is_packed() {
             assert!(eq_point.len() < packing_log_width::<EF>());

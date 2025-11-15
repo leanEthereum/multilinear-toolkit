@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::{any::TypeId, ops::Mul};
 
 use backend::{
     DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, par_zip_fold_2,
@@ -11,34 +11,49 @@ use rayon::prelude::*;
 use crate::{SumcheckComputation, SumcheckComputationPacked, sumcheck_prove_many_rounds};
 
 #[derive(Debug)]
-pub struct ProductComputation;
+pub struct MultiProductComputation<const N: usize>;
 
-impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
-    for ProductComputation
+pub type ProductComputation = MultiProductComputation<2>;
+
+impl<const N: usize, IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
+    for MultiProductComputation<N>
 {
     fn eval(&self, point: &[IF], _: &[EF]) -> EF {
         if TypeId::of::<IF>() == TypeId::of::<EF>() {
             let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
-            unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
+            multi_mul::<N, _>(point)
         } else {
             todo!("There would be embedding overhead ...?")
         }
     }
     fn degree(&self) -> usize {
-        2
+        N
     }
 }
 
-impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for ProductComputation {
+impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF>
+    for MultiProductComputation<N>
+{
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient
-        EFPacking::<EF>::from(point[0] * point[1])
+        EFPacking::<EF>::from(multi_mul::<N, _>(point))
     }
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        unsafe { *point.get_unchecked(0) * *point.get_unchecked(1) }
+        multi_mul::<N, _>(point)
     }
     fn degree(&self) -> usize {
-        2
+        N
+    }
+}
+
+#[inline(always)]
+fn multi_mul<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> A {
+    match N {
+        2 => args[0] * args[1],
+        4 => args[0] * args[1] * args[2] * args[3],
+        8 => args[0] * args[1] * args[2] * args[3] * args[4] * args[5] * args[6] * args[7],
+        16 => multi_mul::<8, A>(&args[0..8]) * multi_mul::<8, A>(&args[8..16]),
+        _ => unimplemented!(),
     }
 }
 
@@ -121,7 +136,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         1,
         folded,
         Some(vec![EF::ONE - r2, r2]),
-        &ProductComputation,
+        &ProductComputation {},
         &[],
         None,
         false,
