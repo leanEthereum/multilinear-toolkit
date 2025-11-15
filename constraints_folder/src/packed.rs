@@ -14,6 +14,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
     type F = PFPacking<EF>;
     type Expr = PFPacking<EF>;
     type Var = PFPacking<EF>;
+    type FinalOutput = EFPacking<EF>;
 
     #[inline]
     fn main(&self) -> &[PFPacking<EF>] {
@@ -29,15 +30,9 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
     }
 
     #[inline]
-    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _array: [I; N]) {
-        unreachable!();
-        // let expr_array = array.map(Into::into);
-        // self.accumulator += EFPacking::<EF>::from_basis_coefficients_fn(|i| {
-        //     let alpha_powers = &self.decomposed_alpha_powers[i]
-        //         [self.constraint_index..(self.constraint_index + N)];
-        //     PFPacking::<EF>::packed_linear_combination::<N>(alpha_powers, &expr_array)
-        // });
-        // self.constraint_index += N;
+    fn add_custom(&mut self, value: Self::FinalOutput) {
+        self.accumulator += value;
+        self.constraint_index += 1;
     }
 }
 
@@ -53,6 +48,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
     type F = PFPacking<EF>;
     type Expr = EFPacking<EF>;
     type Var = EFPacking<EF>;
+    type FinalOutput = EFPacking<EF>;
 
     #[inline]
     fn main(&self) -> &[EFPacking<EF>] {
@@ -68,7 +64,8 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
     }
 
     #[inline]
-    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _array: [I; N]) {
-        unreachable!();
+    fn add_custom(&mut self, value: Self::FinalOutput) {
+        self.accumulator += value;
+        self.constraint_index += 1;
     }
 }

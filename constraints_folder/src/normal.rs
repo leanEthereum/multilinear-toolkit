@@ -22,6 +22,7 @@ where
     type F = PF<EF>;
     type Expr = NF;
     type Var = NF;
+    type FinalOutput = EF;
 
     #[inline]
     fn main(&self) -> &[NF] {
@@ -37,7 +38,8 @@ where
     }
 
     #[inline]
-    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _: [I; N]) {
-        unreachable!()
+    fn add_custom(&mut self, value: Self::FinalOutput) {
+        self.accumulator += value;
+        self.constraint_index += 1;
     }
 }
