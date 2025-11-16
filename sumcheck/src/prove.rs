@@ -17,14 +17,11 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
-    missing_mul_factors: Option<EF>,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     sumcheck_fold_and_prove(
         skip,
@@ -36,7 +33,7 @@ where
         is_zerofier,
         prover_state,
         sum,
-        missing_mul_factors,
+        store_intermediate_foldings
     )
 }
 
@@ -51,14 +48,11 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
-    missing_mul_factors: Option<EF>,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut n_rounds = multilinears.by_ref().n_vars() + 1 - skip;
@@ -75,8 +69,9 @@ where
         is_zerofier,
         prover_state,
         sum,
-        missing_mul_factors,
+        None,
         n_rounds,
+        store_intermediate_foldings
     );
 
     let final_folds = final_folds
@@ -106,13 +101,11 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     mut sum: EF,
     mut missing_mul_factors: Option<EF>,
     n_rounds: usize,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> =
@@ -176,6 +169,7 @@ where
             &mut missing_mul_factors,
             challenge,
             &ps,
+            store_intermediate_foldings
         );
         skip = 1;
         is_zerofier = false;
@@ -207,10 +201,7 @@ fn compute_and_send_polynomial<'a, EF, SC>(
 ) -> DensePolynomial<EF>
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
@@ -222,7 +213,7 @@ where
         0
     };
 
-    let computation_degree = SumcheckComputation::<EF, EF>::degree(computation);
+    let computation_degree = computation.degree();
     let zs = (start..=computation_degree * ((1 << skips) - 1))
         .filter(|&i| i != (1 << skips) - 1)
         .collect::<Vec<_>>();
@@ -240,9 +231,6 @@ where
     let sc_params = SumcheckComputeParams {
         skips,
         eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
-        first_eq_factor: eq_factor
-            .as_ref()
-            .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
         batching_scalars,
@@ -315,6 +303,7 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
     p: &DensePolynomial<EF>,
+    store_intermediate_foldings: bool,
 ) -> Option<Vec<EF>> {
     *sum = p.evaluate(challenge);
     *n_vars -= skips;
@@ -339,9 +328,7 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
         .map(|s| s.evaluate(challenge))
         .collect::<Vec<_>>();
 
-    if multilinears.n_columns() >= 5 {
-        // Heuristic (otherwise we cannot cache too much data)
-        // TODO it's possible to do muchhh better
+    if store_intermediate_foldings {
         *multilinears = multilinears.by_ref().fold(&selectors).into();
         None
     } else {

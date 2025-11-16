@@ -1,4 +1,4 @@
-use std::{any::TypeId, ops::Mul};
+use std::ops::Mul;
 
 use backend::{
     DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, par_zip_fold_2,
@@ -8,41 +8,36 @@ use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
 
-use crate::{SumcheckComputation, SumcheckComputationPacked, sumcheck_prove_many_rounds};
+use crate::{SumcheckComputation, sumcheck_prove_many_rounds};
 
 #[derive(Debug)]
 pub struct MultiProductComputation<const N: usize>;
 
 pub type ProductComputation = MultiProductComputation<2>;
+pub type CubeComputation = MultiProductComputation<3>;
 
-impl<const N: usize, IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
+impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for MultiProductComputation<N>
 {
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
-        if TypeId::of::<IF>() == TypeId::of::<EF>() {
-            let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
-            multi_mul::<N, _>(point)
-        } else {
-            todo!("There would be embedding overhead ...?")
-        }
-    }
     fn degree(&self) -> usize {
         N
     }
-}
-
-impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF>
-    for MultiProductComputation<N>
-{
+    #[inline(always)]
+    fn eval_base(&self, _point: &[PF<EF>], _: &[EF]) -> EF {
+        unreachable!()
+    }
+    #[inline(always)]
+    fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
+        multi_mul::<N, _>(point)
+    }
+    #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient
         EFPacking::<EF>::from(multi_mul::<N, _>(point))
     }
+    #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         multi_mul::<N, _>(point)
-    }
-    fn degree(&self) -> usize {
-        N
     }
 }
 
@@ -50,6 +45,7 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF>
 fn multi_mul<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> A {
     match N {
         2 => args[0] * args[1],
+        3 => args[0] * args[1] * args[2],
         4 => args[0] * args[1] * args[2] * args[3],
         8 => args[0] * args[1] * args[2] * args[3] * args[4] * args[5] * args[6] * args[7],
         16 => multi_mul::<8, A>(&args[0..8]) * multi_mul::<8, A>(&args[8..16]),
@@ -144,6 +140,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         sum,
         None,
         n_rounds - 2,
+        true
     );
 
     challenges.splice(0..0, [r1, r2]);
@@ -238,7 +235,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     )
 }
 
-#[inline]
+#[inline(always)]
 pub fn sumcheck_quadratic<F, EF>(((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF))) -> (EF, EF)
 where
     F: PrimeCharacteristicRing + Copy,

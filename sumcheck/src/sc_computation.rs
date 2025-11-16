@@ -3,57 +3,63 @@ use backend::*;
 use constraints_folder::*;
 use fiat_shamir::*;
 use p3_air::Air;
+use p3_air::BaseAir;
+use p3_field::ExtensionField;
 use p3_field::PackedFieldExtension;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::dot_product;
-use p3_field::{ExtensionField, Field};
 use p3_util::log2_strict_usize;
 use rayon::prelude::*;
 use std::any::TypeId;
 use std::ops::Add;
 use std::ops::Mul;
 
-pub trait SumcheckComputation<NF, EF>: Sync {
+pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync {
     fn degree(&self) -> usize;
-    fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF;
+    fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF;
+    fn eval_extension(&self, point: &[EF], alpha_powers: &[EF]) -> EF;
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
 }
 
-impl<NF, EF, A> SumcheckComputation<NF, EF> for A
+pub trait SumcheckComputationForAir {}
+
+impl<EF, A> SumcheckComputation<EF> for A
 where
-    NF: ExtensionField<PF<EF>>,
-    EF: ExtensionField<NF> + ExtensionField<PF<EF>>,
-    A: for<'a> Air<ConstraintFolder<'a, NF, EF>>,
+    EF: ExtensionField<PF<EF>>,
+    A: SumcheckComputationForAir
+        + Send
+        + Sync
+        + for<'a> Air<ConstraintFolderPackedBase<'a, EF>>
+        + for<'a> Air<ConstraintFolderPackedExtension<'a, EF>>
+        + for<'a> Air<ConstraintFolder<'a, PF<EF>, EF>>
+        + for<'a> Air<ConstraintFolder<'a, EF, EF>>,
 {
-    fn eval(&self, point: &[NF], alpha_powers: &[EF]) -> EF {
+    #[inline(always)]
+    fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF {
         let mut folder = ConstraintFolder {
             main: point,
             alpha_powers,
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        self.eval(&mut folder);
+        Air::<ConstraintFolder<PF<EF>, EF>>::eval(self, &mut folder);
         folder.accumulator
     }
-    fn degree(&self) -> usize {
-        self.degree()
+
+    #[inline(always)]
+    fn eval_extension(&self, point: &[EF], alpha_powers: &[EF]) -> EF {
+        let mut folder = ConstraintFolder {
+            main: point,
+            alpha_powers,
+            accumulator: EF::ZERO,
+            constraint_index: 0,
+        };
+        Air::<ConstraintFolder<EF, EF>>::eval(self, &mut folder);
+        folder.accumulator
     }
-}
 
-pub trait SumcheckComputationPacked<EF>: Sync
-where
-    EF: ExtensionField<PF<EF>>,
-{
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
-    fn degree(&self) -> usize;
-}
-
-impl<EF: Field, A> SumcheckComputationPacked<EF> for A
-where
-    EF: ExtensionField<PF<EF>>,
-    A: for<'a> Air<ConstraintFolderPackedBase<'a, EF>>
-        + for<'a> Air<ConstraintFolderPackedExtension<'a, EF>>,
-{
+    #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedBase {
             main: point,
@@ -61,11 +67,12 @@ where
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        self.eval(&mut folder);
+        Air::<ConstraintFolderPackedBase<_>>::eval(self, &mut folder);
 
         folder.accumulator
     }
 
+    #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedExtension {
             main: point,
@@ -73,13 +80,13 @@ where
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        self.eval(&mut folder);
+        Air::<ConstraintFolderPackedExtension<_>>::eval(self, &mut folder);
 
         folder.accumulator
     }
 
     fn degree(&self) -> usize {
-        self.degree()
+        <A as BaseAir<PF<EF>>>::degree(self)
     }
 }
 
@@ -89,14 +96,13 @@ pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
     zs: &[usize],
 ) -> Vec<(PF<EF>, EF)>
 where
-    SC: SumcheckComputation<PF<EF>, EF> + SumcheckComputation<EF, EF> + SumcheckComputationPacked<EF> + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let SumcheckComputeParams {
         skips,
         eq_mle,
         folding_factors,
         computation,
-        first_eq_factor,
         batching_scalars,
         missing_mul_factor,
         sum,
@@ -126,50 +132,6 @@ where
                     EFPacking::<EF>::to_ext_iter([e]).collect()
                 })
             }
-            _ => unimplemented!(),
-        };
-        return vec![
-            (PF::<EF>::ZERO, poly.coeffs[0]),
-            (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-        ];
-    }
-
-    // TODO handle this in a more general way
-    if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<EF>>() {
-        assert!(eq_mle.is_some());
-        assert!(batching_scalars.is_empty());
-        assert_eq!(group.n_columns(), 4);
-
-        let sc_computation =
-            unsafe { std::mem::transmute::<&SC, &GKRQuotientComputation<EF>>(computation) };
-
-        let poly = match group {
-            MleGroupRef::Extension(multilinears) => compute_gkr_quotient_sumcheck_polynomial(
-                &multilinears[0],
-                &multilinears[1],
-                &multilinears[2],
-                &multilinears[3],
-                sc_computation.u4_const,
-                sc_computation.u5_const,
-                first_eq_factor.unwrap(),
-                eq_mle.unwrap().as_extension().unwrap(),
-                missing_mul_factor.unwrap_or(EF::ONE),
-                sum,
-                |e| vec![e],
-            ),
-            MleGroupRef::ExtensionPacked(multilinears) => compute_gkr_quotient_sumcheck_polynomial(
-                &multilinears[0],
-                &multilinears[1],
-                &multilinears[2],
-                &multilinears[3],
-                sc_computation.u4_const,
-                sc_computation.u5_const,
-                first_eq_factor.unwrap(),
-                eq_mle.unwrap().as_extension_packed().unwrap(),
-                missing_mul_factor.unwrap_or(EF::ONE),
-                sum,
-                |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
-            ),
             _ => unimplemented!(),
         };
         return vec![
@@ -245,17 +207,13 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
     zs: &[usize],
 ) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>)
 where
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let SumcheckComputeParams {
         skips,
         eq_mle,
         folding_factors,
         computation,
-        first_eq_factor,
         batching_scalars,
         missing_mul_factor,
         sum,
@@ -308,68 +266,6 @@ where
                 (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
             ],
             folded,
-        );
-    }
-
-    // TODO handle this in a more general way
-    if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<EF>>() {
-        assert!(eq_mle.is_some());
-        assert!(batching_scalars.is_empty());
-        assert_eq!(group.n_columns(), 4);
-        assert!(
-            prev_folding_factors.len() == 2
-                && prev_folding_factors[0] == EF::ONE - prev_folding_factors[1]
-        );
-        let prev_folding_factor = prev_folding_factors[1];
-
-        let sc_computation =
-            unsafe { std::mem::transmute::<&SC, &GKRQuotientComputation<EF>>(computation) };
-
-        let (poly, folded_multilinears) = match group {
-            MleGroupRef::Extension(multilinears) => {
-                let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
-                    prev_folding_factor,
-                    &multilinears[0],
-                    &multilinears[1],
-                    &multilinears[2],
-                    &multilinears[3],
-                    sc_computation.u4_const,
-                    sc_computation.u5_const,
-                    first_eq_factor.unwrap(),
-                    eq_mle.unwrap().as_extension().unwrap(),
-                    missing_mul_factor.unwrap_or(EF::ONE),
-                    sum,
-                    |e| vec![e],
-                );
-                let folded = MleGroupOwned::Extension(folded);
-                (poly, folded)
-            }
-            MleGroupRef::ExtensionPacked(multilinears) => {
-                let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
-                    prev_folding_factor,
-                    &multilinears[0],
-                    &multilinears[1],
-                    &multilinears[2],
-                    &multilinears[3],
-                    sc_computation.u4_const,
-                    sc_computation.u5_const,
-                    first_eq_factor.unwrap(),
-                    eq_mle.unwrap().as_extension_packed().unwrap(),
-                    missing_mul_factor.unwrap_or(EF::ONE),
-                    sum,
-                    |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
-                );
-                let folded = MleGroupOwned::ExtensionPacked(folded);
-                (poly, folded)
-            }
-            _ => unimplemented!(),
-        };
-        return (
-            vec![
-                (PF::<EF>::ZERO, poly.coeffs[0]),
-                (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-            ],
-            folded_multilinears,
         );
     }
 
@@ -443,7 +339,6 @@ where
 pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC> {
     pub skips: usize,
     pub eq_mle: Option<&'a MleOwned<EF>>,
-    pub first_eq_factor: Option<EF>,
     pub folding_factors: &'a [Vec<PF<EF>>],
     pub computation: &'a SC,
     pub batching_scalars: &'a [EF],
@@ -467,7 +362,7 @@ fn sumcheck_compute_not_packed<
     fold_size: usize,
 ) -> Vec<(PF<EF>, EF)>
 where
-    SC: SumcheckComputation<IF, EF>,
+    SC: SumcheckComputation<EF>,
 {
     let n = zs.len();
     let sum_zs_packed = (0..fold_size)
@@ -495,7 +390,14 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res = computation.eval(&point, batching_scalars);
+                    let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
+                        let point = unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point) };
+                        computation.eval_base(&point, batching_scalars)
+                    } else {
+                        assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
+                        let point = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point) };
+                        computation.eval_extension(&point, batching_scalars)
+                    };
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -540,7 +442,7 @@ fn sumcheck_fold_and_compute_not_packed<
     compute_fold_size: usize,
 ) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>)
 where
-    SC: SumcheckComputation<EF, EF>,
+    SC: SumcheckComputation<EF>,
 {
     let bi_folded = prev_folding_factors.len() == 2;
     if bi_folded {
@@ -595,7 +497,7 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res = computation.eval(&point, batching_scalars);
+                    let mut res = computation.eval_extension(&point, batching_scalars);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -626,7 +528,7 @@ where
 fn sumcheck_compute_packed<
     EF: ExtensionField<PF<EF>>, // extension field
     WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
-    SCP: SumcheckComputationPacked<EF>,
+    SCP: SumcheckComputation<EF>,
 >(
     multilinears: &[&[WPF]],
     zs: &[usize],
@@ -712,7 +614,7 @@ fn sumcheck_compute_packed<
 fn sumcheck_fold_and_compute_packed<
     EF: ExtensionField<PF<EF>>, // extension field
     WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
-    SCP: SumcheckComputationPacked<EF>,
+    SCP: SumcheckComputation<EF>,
 >(
     prev_folding_factors: &[EF],
     multilinears: &[&[WPF]],
