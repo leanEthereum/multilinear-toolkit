@@ -33,7 +33,7 @@ where
         is_zerofier,
         prover_state,
         sum,
-        store_intermediate_foldings
+        store_intermediate_foldings,
     )
 }
 
@@ -71,7 +71,7 @@ where
         sum,
         None,
         n_rounds,
-        store_intermediate_foldings
+        store_intermediate_foldings,
     );
 
     let final_folds = final_folds
@@ -169,7 +169,7 @@ where
             &mut missing_mul_factors,
             challenge,
             &ps,
-            store_intermediate_foldings
+            store_intermediate_foldings,
         );
         skip = 1;
         is_zerofier = false;
@@ -231,6 +231,9 @@ where
     let sc_params = SumcheckComputeParams {
         skips,
         eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
+        first_eq_factor: eq_factor
+            .as_ref()
+            .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
         batching_scalars,

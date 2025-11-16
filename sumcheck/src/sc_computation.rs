@@ -101,6 +101,7 @@ where
     let SumcheckComputeParams {
         skips,
         eq_mle,
+        first_eq_factor,
         folding_factors,
         computation,
         batching_scalars,
@@ -132,6 +133,44 @@ where
                     EFPacking::<EF>::to_ext_iter([e]).collect()
                 })
             }
+            _ => unimplemented!(),
+        };
+        return vec![
+            (PF::<EF>::ZERO, poly.coeffs[0]),
+            (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
+        ];
+    }
+
+    // TODO handle this in a more general way
+    if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<2>>() {
+        assert!(eq_mle.is_some());
+        assert_eq!(group.n_columns(), 4);
+
+        let poly = match group {
+            MleGroupRef::Extension(multilinears) => compute_gkr_quotient_sumcheck_polynomial(
+                &multilinears[0],
+                &multilinears[1],
+                &multilinears[2],
+                &multilinears[3],
+                batching_scalars[0],
+                first_eq_factor.unwrap(),
+                eq_mle.unwrap().as_extension().unwrap(),
+                missing_mul_factor.unwrap_or(EF::ONE),
+                sum,
+                |e| vec![e],
+            ),
+            MleGroupRef::ExtensionPacked(multilinears) => compute_gkr_quotient_sumcheck_polynomial(
+                &multilinears[0],
+                &multilinears[1],
+                &multilinears[2],
+                &multilinears[3],
+                batching_scalars[0],
+                first_eq_factor.unwrap(),
+                eq_mle.unwrap().as_extension_packed().unwrap(),
+                missing_mul_factor.unwrap_or(EF::ONE),
+                sum,
+                |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
+            ),
             _ => unimplemented!(),
         };
         return vec![
@@ -212,6 +251,7 @@ where
     let SumcheckComputeParams {
         skips,
         eq_mle,
+        first_eq_factor,
         folding_factors,
         computation,
         batching_scalars,
@@ -226,7 +266,7 @@ where
         fold_size
     };
 
-    // TODO handle this in a more general way
+     // TODO handle this in a more general way
     if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
         assert!(missing_mul_factor.is_none());
         assert!(batching_scalars.is_empty());
@@ -266,6 +306,63 @@ where
                 (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
             ],
             folded,
+        );
+    }
+
+
+    // TODO handle this in a more general way
+    if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<2>>() {
+        assert!(eq_mle.is_some());
+        assert_eq!(group.n_columns(), 4);
+        assert!(
+            prev_folding_factors.len() == 2
+                && prev_folding_factors[0] == EF::ONE - prev_folding_factors[1]
+        );
+        let prev_folding_factor = prev_folding_factors[1];
+
+        let (poly, folded_multilinears) = match group {
+            MleGroupRef::Extension(multilinears) => {
+                let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
+                    prev_folding_factor,
+                    &multilinears[0],
+                    &multilinears[1],
+                    &multilinears[2],
+                    &multilinears[3],
+                    batching_scalars[0],
+                    first_eq_factor.unwrap(),
+                    eq_mle.unwrap().as_extension().unwrap(),
+                    missing_mul_factor.unwrap_or(EF::ONE),
+                    sum,
+                    |e| vec![e],
+                );
+                let folded = MleGroupOwned::Extension(folded);
+                (poly, folded)
+            }
+            MleGroupRef::ExtensionPacked(multilinears) => {
+                let (poly, folded) = fold_and_compute_gkr_quotient_sumcheck_polynomial(
+                    prev_folding_factor,
+                    &multilinears[0],
+                    &multilinears[1],
+                    &multilinears[2],
+                    &multilinears[3],
+                                  batching_scalars[0],
+                    first_eq_factor.unwrap(),
+                    eq_mle.unwrap().as_extension_packed().unwrap(),
+                    missing_mul_factor.unwrap_or(EF::ONE),
+                    sum,
+                    |e| EFPacking::<EF>::to_ext_iter([e]).collect(),
+                );
+                let folded = MleGroupOwned::ExtensionPacked(folded);
+                (poly, folded)
+            }
+            _ => unimplemented!(),
+        };
+        return (
+            vec![
+                (PF::<EF>::ZERO, poly.coeffs[0]),
+                (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
+            ],
+            folded_multilinears,
         );
     }
 
@@ -339,6 +436,7 @@ where
 pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC> {
     pub skips: usize,
     pub eq_mle: Option<&'a MleOwned<EF>>,
+    pub first_eq_factor: Option<EF>,
     pub folding_factors: &'a [Vec<PF<EF>>],
     pub computation: &'a SC,
     pub batching_scalars: &'a [EF],
