@@ -62,4 +62,11 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
             Self::Ref(r) => r.is_packed(),
         }
     }
+
+    pub fn as_owned_or_clone(self) -> MleGroupOwned<EF> {
+        match self {
+            Self::Owned(owned) => owned,
+            Self::Ref(r) => r.clone_to_owned()
+        }
+    }
 }

@@ -92,20 +92,18 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
         }
     }
 
-    // Clone everything in the group, should not be used when n_vars is large
-    pub fn unpack(&self) -> MleGroupOwned<EF> {
+    /// performs a "real" clone only in case `Self::ExtensionPacked`
+    pub fn unpack(&self) -> MleGroup<'_, EF> {
         match self {
-            Self::Base(pols) => MleGroupOwned::Base(pols.iter().map(|v| v.to_vec()).collect()),
-            Self::Extension(pols) => {
-                MleGroupOwned::Extension(pols.iter().map(|v| v.to_vec()).collect())
-            }
-            Self::BasePacked(pols) => MleGroupOwned::Base(
+            Self::Base(_) | Self::Extension(_) => self.clone().into(),
+            Self::BasePacked(pols) => MleGroupRef::Base(
                 pols.iter()
-                    .map(|v| PFPacking::<EF>::unpack_slice(v).to_vec())
+                    .map(|v| PFPacking::<EF>::unpack_slice(v))
                     .collect(),
-            ),
+            )
+            .into(),
             Self::ExtensionPacked(pols) => {
-                MleGroupOwned::Extension(pols.iter().map(|v| unpack_extension(v)).collect())
+                MleGroupOwned::Extension(pols.iter().map(|v| unpack_extension(v)).collect()).into()
             }
         }
     }
@@ -149,6 +147,21 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
                     .map(|m| m.as_extension_packed().unwrap())
                     .collect(),
             ),
+        }
+    }
+
+    pub fn clone_to_owned(&self) -> MleGroupOwned<EF> {
+        match self {
+            Self::Base(pols) => MleGroupOwned::Base(pols.iter().map(|v| v.to_vec()).collect()),
+            Self::Extension(pols) => {
+                MleGroupOwned::Extension(pols.iter().map(|v| v.to_vec()).collect())
+            }
+            Self::BasePacked(pols) => {
+                MleGroupOwned::BasePacked(pols.iter().map(|v| v.to_vec()).collect())
+            }
+            Self::ExtensionPacked(pols) => {
+                MleGroupOwned::ExtensionPacked(pols.iter().map(|v| v.to_vec()).collect())
+            }
         }
     }
 }

@@ -137,7 +137,7 @@ where
         assert_eq!(eq_mle.by_ref().n_vars(), eq_point.len() - 1);
         if eq_mle.by_ref().is_packed() && !multilinears.is_packed() {
             assert!(eq_point.len() < packing_log_width::<EF>());
-            multilinears = multilinears.by_ref().unpack().into();
+            multilinears = multilinears.by_ref().unpack().as_owned_or_clone().into();
         }
     }
 
@@ -146,7 +146,7 @@ where
         // If Packing is enabled, and there are too little variables, we unpack everything:
         if multilinears.by_ref().is_packed() && n_vars <= 1 + packing_log_width::<EF>() {
             // unpack
-            multilinears = multilinears.by_ref().unpack().into();
+            multilinears = multilinears.by_ref().unpack().as_owned_or_clone().into();
             if let Some((_, eq_mle)) = &mut eq_factor {
                 *eq_mle = eq_mle.by_ref().unpack().as_owned_or_clone();
             }
