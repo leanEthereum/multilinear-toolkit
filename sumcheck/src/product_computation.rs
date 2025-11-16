@@ -140,6 +140,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         sum,
         None,
         n_rounds - 2,
+        true
     );
 
     challenges.splice(0..0, [r1, r2]);
@@ -234,7 +235,7 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     )
 }
 
-#[inline]
+#[inline(always)]
 pub fn sumcheck_quadratic<F, EF>(((&x_0, &x_1), (&y_0, &y_1)): ((&F, &F), (&EF, &EF))) -> (EF, EF)
 where
     F: PrimeCharacteristicRing + Copy,

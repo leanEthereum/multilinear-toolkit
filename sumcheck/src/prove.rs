@@ -17,7 +17,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
-    missing_mul_factors: Option<EF>,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
@@ -33,7 +33,7 @@ where
         is_zerofier,
         prover_state,
         sum,
-        missing_mul_factors,
+        store_intermediate_foldings
     )
 }
 
@@ -48,7 +48,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
-    missing_mul_factors: Option<EF>,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
@@ -69,8 +69,9 @@ where
         is_zerofier,
         prover_state,
         sum,
-        missing_mul_factors,
+        None,
         n_rounds,
+        store_intermediate_foldings
     );
 
     let final_folds = final_folds
@@ -100,6 +101,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     mut sum: EF,
     mut missing_mul_factors: Option<EF>,
     n_rounds: usize,
+    store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
@@ -167,6 +169,7 @@ where
             &mut missing_mul_factors,
             challenge,
             &ps,
+            store_intermediate_foldings
         );
         skip = 1;
         is_zerofier = false;
@@ -300,6 +303,7 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
     p: &DensePolynomial<EF>,
+    store_intermediate_foldings: bool,
 ) -> Option<Vec<EF>> {
     *sum = p.evaluate(challenge);
     *n_vars -= skips;
@@ -324,9 +328,7 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
         .map(|s| s.evaluate(challenge))
         .collect::<Vec<_>>();
 
-    if multilinears.n_columns() >= 5 {
-        // Heuristic (otherwise we cannot cache too much data)
-        // TODO it's possible to do muchhh better
+    if store_intermediate_foldings {
         *multilinears = multilinears.by_ref().fold(&selectors).into();
         None
     } else {
