@@ -28,27 +28,27 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     }
     #[inline(always)]
     fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
-        multi_mul::<N, _>(point)
+        mul_many_const::<N, _>(point)
     }
     #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient
-        EFPacking::<EF>::from(multi_mul::<N, _>(point))
+        EFPacking::<EF>::from(mul_many_const::<N, _>(point))
     }
     #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        multi_mul::<N, _>(point)
+        mul_many_const::<N, _>(point)
     }
 }
 
 #[inline(always)]
-fn multi_mul<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> A {
+pub fn mul_many_const<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> A {
     match N {
         2 => args[0] * args[1],
         3 => args[0] * args[1] * args[2],
         4 => args[0] * args[1] * args[2] * args[3],
         8 => args[0] * args[1] * args[2] * args[3] * args[4] * args[5] * args[6] * args[7],
-        16 => multi_mul::<8, A>(&args[0..8]) * multi_mul::<8, A>(&args[8..16]),
+        16 => mul_many_const::<8, A>(&args[0..8]) * mul_many_const::<8, A>(&args[8..16]),
         _ => unimplemented!(),
     }
 }
