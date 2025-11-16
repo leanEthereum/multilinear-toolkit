@@ -16,9 +16,8 @@ use std::ops::Mul;
 
 pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync {
     fn degree(&self) -> usize;
-    fn eval<NF: ExtensionField<PF<EF>>>(&self, point: &[NF], alpha_powers: &[EF]) -> EF
-    where
-        EF: ExtensionField<NF>;
+    fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF;
+    fn eval_extension(&self, point: &[EF], alpha_powers: &[EF]) -> EF;
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
 }
@@ -36,32 +35,26 @@ where
         + for<'a> Air<ConstraintFolder<'a, PF<EF>, EF>>
         + for<'a> Air<ConstraintFolder<'a, EF, EF>>,
 {
-    fn eval<NF: ExtensionField<PF<EF>>>(&self, point: &[NF], alpha_powers: &[EF]) -> EF
-    where
-        EF: ExtensionField<NF>,
-    {
-        if TypeId::of::<NF>() == TypeId::of::<PF<EF>>() {
-            let point = unsafe { std::mem::transmute::<&[NF], &[PF<EF>]>(point) };
-            let mut folder = ConstraintFolder {
-                main: point,
-                alpha_powers,
-                accumulator: EF::ZERO,
-                constraint_index: 0,
-            };
-            Air::<ConstraintFolder<PF<EF>, EF>>::eval(self, &mut folder);
-            folder.accumulator
-        } else {
-            assert_eq!(TypeId::of::<NF>(), TypeId::of::<EF>());
-            let point = unsafe { std::mem::transmute::<&[NF], &[EF]>(point) };
-            let mut folder = ConstraintFolder {
-                main: point,
-                alpha_powers,
-                accumulator: EF::ZERO,
-                constraint_index: 0,
-            };
-            Air::<ConstraintFolder<EF, EF>>::eval(self, &mut folder);
-            folder.accumulator
-        }
+    fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF {
+        let mut folder = ConstraintFolder {
+            main: point,
+            alpha_powers,
+            accumulator: EF::ZERO,
+            constraint_index: 0,
+        };
+        Air::<ConstraintFolder<PF<EF>, EF>>::eval(self, &mut folder);
+        folder.accumulator
+    }
+
+    fn eval_extension(&self, point: &[EF], alpha_powers: &[EF]) -> EF {
+        let mut folder = ConstraintFolder {
+            main: point,
+            alpha_powers,
+            accumulator: EF::ZERO,
+            constraint_index: 0,
+        };
+        Air::<ConstraintFolder<EF, EF>>::eval(self, &mut folder);
+        folder.accumulator
     }
 
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
@@ -393,7 +386,14 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res = computation.eval(&point, batching_scalars);
+                    let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
+                        let point = unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point) };
+                        computation.eval_base(&point, batching_scalars)
+                    } else {
+                        assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
+                        let point = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point) };
+                        computation.eval_extension(&point, batching_scalars)
+                    };
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -493,7 +493,7 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res = computation.eval(&point, batching_scalars);
+                    let mut res = computation.eval_extension(&point, batching_scalars);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }

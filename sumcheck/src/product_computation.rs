@@ -1,4 +1,4 @@
-use std::{any::TypeId, ops::Mul};
+use std::ops::Mul;
 
 use backend::{
     DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, par_zip_fold_2,
@@ -22,16 +22,11 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     fn degree(&self) -> usize {
         N
     }
-    fn eval<IF: ExtensionField<PF<EF>>>(&self, point: &[IF], _: &[EF]) -> EF
-    where
-        EF: ExtensionField<IF>,
-    {
-        if TypeId::of::<IF>() == TypeId::of::<EF>() {
-            let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
-            multi_mul::<N, _>(point)
-        } else {
-            todo!("There would be embedding overhead ...?")
-        }
+    fn eval_base(&self, _point: &[PF<EF>], _: &[EF]) -> EF {
+        unreachable!()
+    }
+    fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
+        multi_mul::<N, _>(point)
     }
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient

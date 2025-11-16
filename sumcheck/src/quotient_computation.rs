@@ -1,5 +1,5 @@
 use fiat_shamir::{EFPacking, PF, PFPacking};
-use p3_field::{ExtensionField, Field};
+use p3_field::ExtensionField;
 
 use crate::SumcheckComputation;
 
@@ -10,10 +10,13 @@ impl<EF: ExtensionField<PF<EF>>> SumcheckComputation<EF> for GKRQuotientComputat
     fn degree(&self) -> usize {
         2
     }
-    fn eval<IF: Field>(&self, point: &[IF], alphas: &[EF]) -> EF
-    where
-        EF: ExtensionField<IF>,
-    {
+    fn eval_base(&self, point: &[PF<EF>], alphas: &[EF]) -> EF {
+        let num = point[0] * point[3] + point[1] * point[2];
+        let denom = point[2] * point[3];
+        alphas[0] * denom + num
+    }
+
+    fn eval_extension(&self, point: &[EF], alphas: &[EF]) -> EF {
         let num = point[0] * point[3] + point[1] * point[2];
         let denom = point[2] * point[3];
         alphas[0] * denom + num
