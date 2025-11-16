@@ -35,6 +35,7 @@ where
         + for<'a> Air<ConstraintFolder<'a, PF<EF>, EF>>
         + for<'a> Air<ConstraintFolder<'a, EF, EF>>,
 {
+    #[inline(always)]
     fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF {
         let mut folder = ConstraintFolder {
             main: point,
@@ -46,6 +47,7 @@ where
         folder.accumulator
     }
 
+    #[inline(always)]
     fn eval_extension(&self, point: &[EF], alpha_powers: &[EF]) -> EF {
         let mut folder = ConstraintFolder {
             main: point,
@@ -57,6 +59,7 @@ where
         folder.accumulator
     }
 
+    #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedBase {
             main: point,
@@ -69,6 +72,7 @@ where
         folder.accumulator
     }
 
+    #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedExtension {
             main: point,

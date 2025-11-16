@@ -22,16 +22,20 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     fn degree(&self) -> usize {
         N
     }
+    #[inline(always)]
     fn eval_base(&self, _point: &[PF<EF>], _: &[EF]) -> EF {
         unreachable!()
     }
+    #[inline(always)]
     fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
         multi_mul::<N, _>(point)
     }
+    #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient
         EFPacking::<EF>::from(multi_mul::<N, _>(point))
     }
+    #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         multi_mul::<N, _>(point)
     }
