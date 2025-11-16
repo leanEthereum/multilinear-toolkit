@@ -8,17 +8,24 @@ use fiat_shamir::*;
 use p3_field::*;
 use rayon::prelude::*;
 
-use crate::{SumcheckComputation, SumcheckComputationPacked, sumcheck_prove_many_rounds};
+use crate::{SumcheckComputation, sumcheck_prove_many_rounds};
 
 #[derive(Debug)]
 pub struct MultiProductComputation<const N: usize>;
 
 pub type ProductComputation = MultiProductComputation<2>;
+pub type CubeComputation = MultiProductComputation<3>;
 
-impl<const N: usize, IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
+impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for MultiProductComputation<N>
 {
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
+    fn degree(&self) -> usize {
+        N
+    }
+    fn eval<IF: ExtensionField<PF<EF>>>(&self, point: &[IF], _: &[EF]) -> EF
+    where
+        EF: ExtensionField<IF>,
+    {
         if TypeId::of::<IF>() == TypeId::of::<EF>() {
             let point = unsafe { std::mem::transmute::<&[IF], &[EF]>(point) };
             multi_mul::<N, _>(point)
@@ -26,14 +33,6 @@ impl<const N: usize, IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> Sumchec
             todo!("There would be embedding overhead ...?")
         }
     }
-    fn degree(&self) -> usize {
-        N
-    }
-}
-
-impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF>
-    for MultiProductComputation<N>
-{
     fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         // TODO this is very inneficient
         EFPacking::<EF>::from(multi_mul::<N, _>(point))
@@ -41,15 +40,13 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF>
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
         multi_mul::<N, _>(point)
     }
-    fn degree(&self) -> usize {
-        N
-    }
 }
 
 #[inline(always)]
 fn multi_mul<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> A {
     match N {
         2 => args[0] * args[1],
+        3 => args[0] * args[1] * args[2],
         4 => args[0] * args[1] * args[2] * args[3],
         8 => args[0] * args[1] * args[2] * args[3] * args[4] * args[5] * args[6] * args[7],
         16 => multi_mul::<8, A>(&args[0..8]) * multi_mul::<8, A>(&args[8..16]),

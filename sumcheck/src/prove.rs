@@ -21,10 +21,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     sumcheck_fold_and_prove(
         skip,
@@ -55,10 +52,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut n_rounds = multilinears.by_ref().n_vars() + 1 - skip;
@@ -109,10 +103,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let mut multilinears: MleGroup<'a, EF> = multilinears.into();
     let mut eq_factor: Option<(Vec<EF>, MleOwned<EF>)> =
@@ -207,10 +198,7 @@ fn compute_and_send_polynomial<'a, EF, SC>(
 ) -> DensePolynomial<EF>
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<PF<EF>, EF>
-        + SumcheckComputation<EF, EF>
-        + SumcheckComputationPacked<EF>
-        + 'static,
+    SC: SumcheckComputation<EF> + 'static,
 {
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
@@ -222,7 +210,7 @@ where
         0
     };
 
-    let computation_degree = SumcheckComputation::<EF, EF>::degree(computation);
+    let computation_degree = computation.degree();
     let zs = (start..=computation_degree * ((1 << skips) - 1))
         .filter(|&i| i != (1 << skips) - 1)
         .collect::<Vec<_>>();
