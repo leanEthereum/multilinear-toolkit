@@ -256,15 +256,6 @@ pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
     par_iter_split_4(u).zip(par_iter_mut_split_2(folded))
 }
 
-// pub fn convert_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {
-//     assert_eq!(N, M);
-//     unsafe {
-//         let output = std::ptr::read(&input as *const [A; N] as *const [A; M]);
-//         std::mem::forget(input);
-//         output
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB};

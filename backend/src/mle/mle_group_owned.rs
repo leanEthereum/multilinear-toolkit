@@ -26,6 +26,13 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         }
     }
 
+    pub fn as_extension(self) -> Option<Vec<Vec<EF>>> {
+        match self {
+            Self::Extension(e) => Some(e),
+            _ => None,
+        }
+    }
+
     pub fn is_packed(&self) -> bool {
         matches!(self, Self::BasePacked(_) | Self::ExtensionPacked(_))
     }

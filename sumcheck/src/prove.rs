@@ -240,9 +240,6 @@ where
     let sc_params = SumcheckComputeParams {
         skips,
         eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
-        first_eq_factor: eq_factor
-            .as_ref()
-            .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
         batching_scalars,

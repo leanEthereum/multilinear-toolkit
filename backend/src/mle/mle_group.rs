@@ -24,7 +24,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
     pub fn by_ref(&'a self) -> MleGroupRef<'a, EF> {
         match self {
             Self::Owned(owned) => owned.by_ref(),
-            Self::Ref(r) => r.clone(),
+            Self::Ref(r) => r.soft_clone(),
         }
     }
 

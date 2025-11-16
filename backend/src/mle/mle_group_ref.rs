@@ -4,7 +4,7 @@ use p3_field::ExtensionField;
 use p3_field::PackedValue;
 use p3_util::log2_strict_usize;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum MleGroupRef<'a, EF: ExtensionField<PF<EF>>> {
     Base(Vec<&'a [PF<EF>]>),
     Extension(Vec<&'a [EF]>),
@@ -88,14 +88,14 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
                 MleGroupOwned::ExtensionPacked(ext.iter().map(|v| pack_extension(v)).collect())
                     .into()
             }
-            Self::BasePacked(_) | Self::ExtensionPacked(_) => self.clone().into(),
+            Self::BasePacked(_) | Self::ExtensionPacked(_) => self.soft_clone().into(),
         }
     }
 
     /// performs a "real" clone only in case `Self::ExtensionPacked`
     pub fn unpack(&self) -> MleGroup<'_, EF> {
         match self {
-            Self::Base(_) | Self::Extension(_) => self.clone().into(),
+            Self::Base(_) | Self::Extension(_) => self.soft_clone().into(),
             Self::BasePacked(pols) => MleGroupRef::Base(
                 pols.iter()
                     .map(|v| PFPacking::<EF>::unpack_slice(v))
@@ -147,6 +147,15 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
                     .map(|m| m.as_extension_packed().unwrap())
                     .collect(),
             ),
+        }
+    }
+
+    pub fn soft_clone(&self) -> MleGroupRef<'a, EF> {
+        match self {
+            Self::Base(v) => MleGroupRef::Base(v.clone()),
+            Self::Extension(v) => MleGroupRef::Extension(v.clone()),
+            Self::BasePacked(v) => MleGroupRef::BasePacked(v.clone()),
+            Self::ExtensionPacked(v) => MleGroupRef::ExtensionPacked(v.clone()),
         }
     }
 
