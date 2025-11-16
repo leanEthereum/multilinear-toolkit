@@ -14,6 +14,20 @@ where
     let max_degree_per_vars = vec![degree; n_vars];
     verify_core(verifier_state, max_degree_per_vars, sumation_sets)
 }
+pub fn sumcheck_verify_with_custom_degree_at_first_round<EF>(
+    verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
+    n_vars: usize,
+    intial_degree: usize,
+    remaining_degree: usize,
+) -> Result<(EF, Evaluation<EF>), ProofError>
+where
+    EF: ExtensionField<PF<EF>>,
+{
+    let sumation_sets = vec![vec![EF::ZERO, EF::ONE]; n_vars];
+    let mut max_degree_per_vars = vec![intial_degree; 1];
+    max_degree_per_vars.extend(vec![remaining_degree; n_vars - 1]);
+    verify_core(verifier_state, max_degree_per_vars, sumation_sets)
+}
 
 pub fn sumcheck_verify_with_univariate_skip<EF>(
     verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,

@@ -17,6 +17,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
+    missing_mul_factor: Option<EF>,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
@@ -33,7 +34,8 @@ where
         is_zerofier,
         prover_state,
         sum,
-        store_intermediate_foldings
+        missing_mul_factor,
+        store_intermediate_foldings,
     )
 }
 
@@ -48,6 +50,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
+    missing_mul_factor: Option<EF>,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
@@ -69,9 +72,9 @@ where
         is_zerofier,
         prover_state,
         sum,
-        None,
+        missing_mul_factor,
         n_rounds,
-        store_intermediate_foldings
+        store_intermediate_foldings,
     );
 
     let final_folds = final_folds
@@ -99,7 +102,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     mut is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     mut sum: EF,
-    mut missing_mul_factors: Option<EF>,
+    mut missing_mul_factor: Option<EF>,
     n_rounds: usize,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, MleGroupOwned<EF>, EF)
@@ -155,7 +158,7 @@ where
             is_zerofier,
             prover_state,
             sum,
-            missing_mul_factors,
+            missing_mul_factor,
         );
         let challenge = prover_state.sample();
         challenges.push(challenge);
@@ -166,10 +169,10 @@ where
             &mut n_vars,
             &mut eq_factor,
             &mut sum,
-            &mut missing_mul_factors,
+            &mut missing_mul_factor,
             challenge,
             &ps,
-            store_intermediate_foldings
+            store_intermediate_foldings,
         );
         skip = 1;
         is_zerofier = false;
@@ -231,6 +234,9 @@ where
     let sc_params = SumcheckComputeParams {
         skips,
         eq_mle: eq_factor.as_ref().map(|(_, eq_mle)| eq_mle),
+        first_eq_factor: eq_factor
+            .as_ref()
+            .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
         batching_scalars,

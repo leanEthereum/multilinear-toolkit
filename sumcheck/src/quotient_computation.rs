@@ -1,96 +1,221 @@
-use std::ops::{Add, Mul};
-
+use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, uninitialized_vec};
 use fiat_shamir::{EFPacking, PF, PFPacking};
-use p3_field::ExtensionField;
+use p3_field::{Algebra, ExtensionField, Field};
+use rayon::prelude::*;
 
-use crate::{SumcheckComputation, mul_many_const};
+use crate::{SumcheckComputation, sumcheck_quadratic};
 
-#[derive(Default, Debug)]
-pub struct GKRQuotientComputation<const N: usize>;
+pub struct GKRQuotientComputation<EF> {
+    pub u4_const: EF,
+    pub u5_const: EF,
+}
 
-impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
-    for GKRQuotientComputation<N>
-{
+impl<EF: ExtensionField<PF<EF>>> SumcheckComputation<EF> for GKRQuotientComputation<EF> {
     fn degree(&self) -> usize {
-        N
+        2
+    }
+    fn eval_base(&self, point: &[PF<EF>], _: &[EF]) -> EF {
+        // U4.U2.U3 + U5.[U0.U3 + U1.U2]
+        self.u4_const * point[2] * point[3]
+            + self.u5_const * (point[0] * point[3] + point[1] * point[2])
     }
 
-    #[inline(always)]
-    fn eval_base(&self, point: &[PF<EF>], alphas: &[EF]) -> EF {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        alphas[0] * denom + num
+    fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
+        // U4.U2.U3 + U5.[U0.U3 + U1.U2]
+        self.u4_const * point[2] * point[3]
+            + self.u5_const * (point[0] * point[3] + point[1] * point[2])
     }
 
-    #[inline(always)]
-    fn eval_extension(&self, point: &[EF], alphas: &[EF]) -> EF {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        alphas[0] * denom + num
+    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        todo!()
     }
-
-    #[inline(always)]
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        EFPacking::<EF>::from(alphas[0]) * denom + num
-    }
-
-    #[inline(always)]
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        EFPacking::<EF>::from(alphas[0]) * denom + num
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        point[2] * point[3] * self.u4_const
+            + (point[0] * point[3] + point[1] * point[2]) * self.u5_const
     }
 }
 
-#[inline(always)]
-pub fn numerator_of_sum_of_quotients<
-    const N: usize,
-    A: Copy + Mul<Output = A> + Add<Output = A>,
->(
-    numerators: &[A],
-    denominators: &[A],
-) -> A {
-    debug_assert_eq!(numerators.len(), N);
-    debug_assert_eq!(denominators.len(), N);
-    match N {
-        2 => numerators[0] * denominators[1] + numerators[1] * denominators[0],
-        4 => {
-            let denom_1_2 = denominators[1] * denominators[2];
-            let denom_0_3 = denominators[0] * denominators[3];
-            numerators[0] * denom_1_2 * denominators[3]
-                + numerators[1] * denominators[2] * denom_0_3
-                + numerators[2] * denominators[1] * denom_0_3
-                + numerators[3] * denominators[0] * denom_1_2
-        }
-        8 => {
-            let d01 = denominators[0] * denominators[1];
-            let d23 = denominators[2] * denominators[3];
-            let d45 = denominators[4] * denominators[5];
-            let d67 = denominators[6] * denominators[7];
+pub struct GKRQuotientCrossComputation {}
 
-            let d0123 = d01 * d23;
-            let d4567 = d45 * d67;
-
-            let d1234567 = denominators[1] * d23 * d4567;
-            let d0234567 = denominators[0] * d23 * d4567;
-            let d0134567 = denominators[1] * denominators[0] * denominators[3] * d4567;
-            let d0124567 = d01 * denominators[2] * d4567;
-            let d0123567 = d0123 * denominators[5] * d67;
-            let d0123467 = d0123 * denominators[4] * d67;
-            let d0123457 = d0123 * d45 * denominators[7];
-            let d0123456 = d0123 * d45 * denominators[6];
-
-            numerators[0] * d1234567
-                + numerators[1] * d0234567
-                + numerators[2] * d0134567
-                + numerators[3] * d0124567
-                + numerators[4] * d0123567
-                + numerators[5] * d0123467
-                + numerators[6] * d0123457
-                + numerators[7] * d0123456
-        }
-        _ => unimplemented!(),
+impl<EF: ExtensionField<PF<EF>>> SumcheckComputation<EF> for GKRQuotientCrossComputation {
+    fn degree(&self) -> usize {
+        2
     }
+    fn eval_base(&self, point: &[PF<EF>], _: &[EF]) -> EF {
+        EF::from(point[0] * point[3] + point[1] * point[2])
+    }
+    fn eval_extension(&self, point: &[EF], _: &[EF]) -> EF {
+        point[0] * point[3] + point[1] * point[2]
+    }
+    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        todo!()
+    }
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
+        point[0] * point[3] + point[1] * point[2]
+    }
+}
+
+pub fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + Sync, EF: Field>(
+    u0: &[F],
+    u1: &[F],
+    u2: &[F],
+    u3: &[F],
+    u4_const: EF,
+    u5_const: EF,
+    first_eq_factor: EF,
+    eq_mle: &[F],
+    missing_mul_factor: EF,
+    sum: EF,
+    decompose: impl Fn(F) -> Vec<EF>,
+) -> DensePolynomial<EF> {
+    let n = u0.len();
+    assert_eq!(eq_mle.len(), n / 2);
+
+    let (c0_term_single, c2_term_single, c0_term_double, c2_term_double) = par_iter_split_2(u0)
+        .zip(par_iter_split_2(u1))
+        .zip(par_iter_split_2(u2))
+        .zip(par_iter_split_2(u3))
+        .zip(eq_mle.par_iter())
+        .map(
+            |(
+                (
+                    (((u0_left, u0_right), (u1_left, u1_right)), (u2_left, u2_right)),
+                    (u3_left, u3_right),
+                ),
+                &eq_val,
+            )| {
+                let (mut c0_term_single, mut c2_term_single) =
+                    sumcheck_quadratic(((u2_left, u2_right), (u3_left, u3_right)));
+                c0_term_single *= eq_val;
+                c2_term_single *= eq_val;
+
+                let (c0_term_double_a, c2_term_double_a) =
+                    sumcheck_quadratic(((u0_left, u0_right), (u3_left, u3_right)));
+                let (c0_term_double_b, c2_term_double_b) =
+                    sumcheck_quadratic(((u1_left, u1_right), (u2_left, u2_right)));
+                let mut c0_term_double = c0_term_double_a + c0_term_double_b;
+                let mut c2_term_double = c2_term_double_a + c2_term_double_b;
+                c0_term_double *= eq_val;
+                c2_term_double *= eq_val;
+
+                (
+                    c0_term_single,
+                    c2_term_single,
+                    c0_term_double,
+                    c2_term_double,
+                )
+            },
+        )
+        .reduce(
+            || (F::ZERO, F::ZERO, F::ZERO, F::ZERO),
+            |(a0, a1, a2, a3), (b0, b1, b2, b3)| (a0 + b0, a1 + b1, a2 + b2, a3 + b3),
+        );
+
+    let c0 = c0_term_single * u4_const + c0_term_double * u5_const;
+    let c2 = c2_term_single * u4_const + c2_term_double * u5_const;
+
+    let c0 = decompose(c0).into_iter().sum::<EF>();
+    let c2 = decompose(c2).into_iter().sum::<EF>();
+
+    let c1 = ((sum / missing_mul_factor) - c2 * first_eq_factor - c0) / first_eq_factor;
+
+    DensePolynomial::new(vec![
+        c0 * missing_mul_factor,
+        c1 * missing_mul_factor,
+        c2 * missing_mul_factor,
+    ])
+}
+
+pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
+    F: Algebra<EF> + Copy + Send + Sync,
+    EF: Field,
+>(
+    prev_folding_factor: EF,
+    u0: &[F],
+    u1: &[F],
+    u2: &[F],
+    u3: &[F],
+    u4_const: EF,
+    u5_const: EF,
+    first_eq_factor: EF,
+    eq_mle: &[F],
+    missing_mul_factor: EF,
+    sum: EF,
+    decompose: impl Fn(F) -> Vec<EF>,
+) -> (DensePolynomial<EF>, Vec<Vec<F>>) {
+    let n = u0.len();
+    assert_eq!(eq_mle.len(), n / 4);
+
+    let mut folded_u0 = unsafe { uninitialized_vec::<F>(n / 2) };
+    let mut folded_u1 = unsafe { uninitialized_vec::<F>(n / 2) };
+    let mut folded_u2 = unsafe { uninitialized_vec::<F>(n / 2) };
+    let mut folded_u3 = unsafe { uninitialized_vec::<F>(n / 2) };
+
+    let my_fold = |u: ((&F, &F), (&F, &F)), folded: (&mut F, &mut F)| {
+        let u_left = *u.0.0 + (*u.1.0 - *u.0.0) * prev_folding_factor;
+        let u_right = *u.0.1 + (*u.1.1 - *u.0.1) * prev_folding_factor;
+        *folded.0 = u_left;
+        *folded.1 = u_right;
+        (u_left, u_right)
+    };
+
+    let (c0_term_single, c2_term_single, c0_term_double, c2_term_double) =
+        par_zip_fold_2(u0, &mut folded_u0)
+            .zip(par_zip_fold_2(u1, &mut folded_u1))
+            .zip(par_zip_fold_2(u2, &mut folded_u2))
+            .zip(par_zip_fold_2(u3, &mut folded_u3))
+            .zip(eq_mle.par_iter())
+            .map(
+                |(
+                    ((((u0_prev, u0_f), (u1_prev, u1_f)), (u2_prev, u2_f)), (u3_prev, u3_f)),
+                    &eq_val,
+                )| {
+                    let (u0_left, u0_right) = my_fold(u0_prev, u0_f);
+                    let (u1_left, u1_right) = my_fold(u1_prev, u1_f);
+                    let (u2_left, u2_right) = my_fold(u2_prev, u2_f);
+                    let (u3_left, u3_right) = my_fold(u3_prev, u3_f);
+
+                    let (mut c0_term_single, mut c2_term_single) =
+                        sumcheck_quadratic(((&u2_left, &u2_right), (&u3_left, &u3_right)));
+                    c0_term_single *= eq_val;
+                    c2_term_single *= eq_val;
+
+                    let (c0_term_double_a, c2_term_double_a) =
+                        sumcheck_quadratic(((&u0_left, &u0_right), (&u3_left, &u3_right)));
+                    let (c0_term_double_b, c2_term_double_b) =
+                        sumcheck_quadratic(((&u1_left, &u1_right), (&u2_left, &u2_right)));
+                    let mut c0_term_double = c0_term_double_a + c0_term_double_b;
+                    let mut c2_term_double = c2_term_double_a + c2_term_double_b;
+                    c0_term_double *= eq_val;
+                    c2_term_double *= eq_val;
+
+                    (
+                        c0_term_single,
+                        c2_term_single,
+                        c0_term_double,
+                        c2_term_double,
+                    )
+                },
+            )
+            .reduce(
+                || (F::ZERO, F::ZERO, F::ZERO, F::ZERO),
+                |(a0, a1, a2, a3), (b0, b1, b2, b3)| (a0 + b0, a1 + b1, a2 + b2, a3 + b3),
+            );
+
+    let c0 = c0_term_single * u4_const + c0_term_double * u5_const;
+    let c2 = c2_term_single * u4_const + c2_term_double * u5_const;
+
+    let c0 = decompose(c0).into_iter().sum::<EF>();
+    let c2 = decompose(c2).into_iter().sum::<EF>();
+
+    let c1 = ((sum / missing_mul_factor) - c2 * first_eq_factor - c0) / first_eq_factor;
+
+    (
+        DensePolynomial::new(vec![
+            c0 * missing_mul_factor,
+            c1 * missing_mul_factor,
+            c2 * missing_mul_factor,
+        ]),
+        vec![folded_u0, folded_u1, folded_u2, folded_u3],
+    )
 }
