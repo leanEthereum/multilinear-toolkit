@@ -1,5 +1,6 @@
 use std::{
     iter::Sum,
+    mem::ManuallyDrop,
     ops::{Add, Range, Sub},
 };
 
@@ -254,6 +255,18 @@ pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
     assert!(n % 4 == 0);
     assert_eq!(folded.len(), n / 2);
     par_iter_split_4(u).zip(par_iter_mut_split_2(folded))
+}
+
+pub fn transmute_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {
+    assert_eq!(N, M, "Array sizes must match");
+
+    unsafe {
+        // Prevent input from being dropped
+        let input = ManuallyDrop::new(input);
+
+        // Read the array as a pointer and cast to the output type
+        std::ptr::read(&*input as *const [A; N] as *const [A; M])
+    }
 }
 
 #[cfg(test)]

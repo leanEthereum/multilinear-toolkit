@@ -1,11 +1,15 @@
-use std::ops::{Add, Mul};
+use std::{
+    array,
+    ops::{Add, Mul},
+};
 
-use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, uninitialized_vec};
+use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, transmute_array, uninitialized_vec};
 use fiat_shamir::{EFPacking, PF, PFPacking};
 use p3_field::{Algebra, ExtensionField, Field};
+use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::*;
 
-use crate::{SumcheckComputation, mul_many_const, sumcheck_quadratic};
+use crate::{SumcheckComputation, sumcheck_quadratic};
 
 #[derive(Default, Debug)]
 pub struct GKRQuotientComputation<const N: usize>;
@@ -14,90 +18,84 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for GKRQuotientComputation<N>
 {
     fn degree(&self) -> usize {
-        N
+        2
     }
 
     #[inline(always)]
     fn eval_base(&self, point: &[PF<EF>], alphas: &[EF]) -> EF {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        alphas[0] * denom + num
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
     fn eval_extension(&self, point: &[EF], alphas: &[EF]) -> EF {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        alphas[0] * denom + num
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
     fn eval_packed_base(&self, point: &[PFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        EFPacking::<EF>::from(alphas[0]) * denom + num
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alphas[i]));
+        my_dot_product(&alphas_packed[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
-        let num = numerator_of_sum_of_quotients::<N, _>(&point[..N], &point[N..]);
-        let denom = mul_many_const::<N, _>(&point[N..]);
-        EFPacking::<EF>::from(alphas[0]) * denom + num
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&inner[1..], &alphas[1..]) + inner[0]
     }
 }
 
 #[inline(always)]
-pub fn numerator_of_sum_of_quotients<
-    const N: usize,
-    A: Copy + Mul<Output = A> + Add<Output = A>,
->(
+pub fn sum_fractions_const_2_by_2<const N: usize, A: Copy + Mul<Output = A> + Add<Output = A>>(
     numerators: &[A],
     denominators: &[A],
-) -> A {
+) -> [A; N] {
     debug_assert_eq!(numerators.len(), N);
     debug_assert_eq!(denominators.len(), N);
     match N {
-        2 => numerators[0] * denominators[1] + numerators[1] * denominators[0],
-        4 => {
-            let denom_1_2 = denominators[1] * denominators[2];
-            let denom_0_3 = denominators[0] * denominators[3];
-            numerators[0] * denom_1_2 * denominators[3]
-                + numerators[1] * denominators[2] * denom_0_3
-                + numerators[2] * denominators[1] * denom_0_3
-                + numerators[3] * denominators[0] * denom_1_2
-        }
-        8 => {
-            let d01 = denominators[0] * denominators[1];
-            let d23 = denominators[2] * denominators[3];
-            let d45 = denominators[4] * denominators[5];
-            let d67 = denominators[6] * denominators[7];
-
-            let d0123 = d01 * d23;
-            let d4567 = d45 * d67;
-
-            let d1234567 = denominators[1] * d23 * d4567;
-            let d0234567 = denominators[0] * d23 * d4567;
-            let d0134567 = denominators[1] * denominators[0] * denominators[3] * d4567;
-            let d0124567 = d01 * denominators[2] * d4567;
-            let d0123567 = d0123 * denominators[5] * d67;
-            let d0123467 = d0123 * denominators[4] * d67;
-            let d0123457 = d0123 * d45 * denominators[7];
-            let d0123456 = d0123 * d45 * denominators[6];
-
-            numerators[0] * d1234567
-                + numerators[1] * d0234567
-                + numerators[2] * d0134567
-                + numerators[3] * d0124567
-                + numerators[4] * d0123567
-                + numerators[5] * d0123467
-                + numerators[6] * d0123457
-                + numerators[7] * d0123456
-        }
+        2 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            denominators[0] * denominators[1],
+        ]),
+        4 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            numerators[2] * denominators[3] + numerators[3] * denominators[2],
+            denominators[0] * denominators[1],
+            denominators[2] * denominators[3],
+        ]),
+        8 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            numerators[2] * denominators[3] + numerators[3] * denominators[2],
+            numerators[4] * denominators[5] + numerators[5] * denominators[4],
+            numerators[6] * denominators[7] + numerators[7] * denominators[6],
+            denominators[0] * denominators[1],
+            denominators[2] * denominators[3],
+            denominators[4] * denominators[5],
+            denominators[6] * denominators[7],
+        ]),
         _ => unimplemented!(),
     }
 }
 
-pub(crate) fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + Sync, EF: Field>(
+#[inline(always)]
+fn my_dot_product<A1: Copy, A2: Copy>(a: &[A1], b: &[A2]) -> A1
+where
+    A1: Algebra<A2>,
+{
+    debug_assert_eq!(a.len(), b.len());
+    let mut res = a[0] * b[0];
+    for (x, y) in a.iter().zip(b.iter()).skip(1) {
+        res += *x * *y;
+    }
+    res
+}
+
+pub(crate) fn compute_gkr_quotient_sumcheck_polynomial<
+    F: Algebra<EF> + Copy + Send + Sync,
+    EF: Field,
+>(
     u0: &[F],
     u1: &[F],
     u2: &[F],

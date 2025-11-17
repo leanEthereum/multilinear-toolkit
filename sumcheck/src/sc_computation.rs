@@ -152,7 +152,7 @@ where
                 &multilinears[1],
                 &multilinears[2],
                 &multilinears[3],
-                batching_scalars[0],
+                batching_scalars[1],
                 first_eq_factor.unwrap(),
                 eq_mle.unwrap().as_extension().unwrap(),
                 missing_mul_factor.unwrap_or(EF::ONE),
@@ -164,7 +164,7 @@ where
                 &multilinears[1],
                 &multilinears[2],
                 &multilinears[3],
-                batching_scalars[0],
+                batching_scalars[1],
                 first_eq_factor.unwrap(),
                 eq_mle.unwrap().as_extension_packed().unwrap(),
                 missing_mul_factor.unwrap_or(EF::ONE),
@@ -266,7 +266,7 @@ where
         fold_size
     };
 
-     // TODO handle this in a more general way
+    // TODO handle this in a more general way
     if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
         assert!(missing_mul_factor.is_none());
         assert!(batching_scalars.is_empty());
@@ -309,7 +309,6 @@ where
         );
     }
 
-
     // TODO handle this in a more general way
     if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<2>>() {
         assert!(eq_mle.is_some());
@@ -328,7 +327,7 @@ where
                     &multilinears[1],
                     &multilinears[2],
                     &multilinears[3],
-                    batching_scalars[0],
+                    batching_scalars[1],
                     first_eq_factor.unwrap(),
                     eq_mle.unwrap().as_extension().unwrap(),
                     missing_mul_factor.unwrap_or(EF::ONE),
@@ -345,7 +344,7 @@ where
                     &multilinears[1],
                     &multilinears[2],
                     &multilinears[3],
-                                  batching_scalars[0],
+                    batching_scalars[1],
                     first_eq_factor.unwrap(),
                     eq_mle.unwrap().as_extension_packed().unwrap(),
                     missing_mul_factor.unwrap_or(EF::ONE),
