@@ -4,64 +4,110 @@ use p3_field::ExtensionField;
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: &'a [PFPacking<EF>],
+    pub up_f: &'a [PFPacking<EF>],
+    pub up_ef: &'a [EFPacking<EF>],
+    pub down_f: &'a [PFPacking<EF>],
+    pub down_ef: &'a [EFPacking<EF>],
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
 }
 
 impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'a, EF> {
-    type Expr = PFPacking<EF>;
-    type FinalOutput = EFPacking<EF>;
+    type F = PFPacking<EF>;
+    type EF = EFPacking<EF>;
 
     #[inline]
-    fn main(&self) -> &[PFPacking<EF>] {
-        self.main
+    fn up_f(&self) -> &[Self::F] {
+        self.up_f
     }
 
     #[inline]
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+    fn up_ef(&self) -> &[Self::EF] {
+        self.up_ef
+    }
+
+    #[inline]
+    fn down_f(&self) -> &[Self::F] {
+        self.down_f
+    }
+
+    #[inline]
+    fn down_ef(&self) -> &[Self::EF] {
+        self.down_ef
+    }
+
+    #[inline]
+    fn assert_zero(&mut self, x: Self::F) {
         let alpha_power = self.alpha_powers[self.constraint_index];
-        let x: PFPacking<EF> = x.into();
-        self.accumulator += Into::<EFPacking<EF>>::into(alpha_power) * x;
+        self.accumulator += EFPacking::<EF>::from(alpha_power) * x;
         self.constraint_index += 1;
     }
 
     #[inline]
-    fn add_custom(&mut self, value: Self::FinalOutput) {
-        self.accumulator += value;
+    fn assert_zero_ef(&mut self, x: Self::EF) {
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += x * alpha_power;
         self.constraint_index += 1;
+    }
+
+    #[inline]
+    fn eval_custom(&mut self, x: Self::EF) {
+        self.assert_zero_ef(x);
     }
 }
 
 #[derive(Debug)]
 pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>> {
-    pub main: &'a [EFPacking<EF>],
+    pub up_f: &'a [EFPacking<EF>],
+    pub up_ef: &'a [EFPacking<EF>],
+    pub down_f: &'a [EFPacking<EF>],
+    pub down_ef: &'a [EFPacking<EF>],
     pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
 }
 
 impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtension<'a, EF> {
-    type Expr = EFPacking<EF>;
-    type FinalOutput = EFPacking<EF>;
+    type F = EFPacking<EF>;
+    type EF = EFPacking<EF>;
 
     #[inline]
-    fn main(&self) -> &[EFPacking<EF>] {
-        &self.main
+    fn up_f(&self) -> &[Self::F] {
+        self.up_f
     }
 
     #[inline]
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+    fn up_ef(&self) -> &[Self::EF] {
+        self.up_ef
+    }
+
+    #[inline]
+    fn down_f(&self) -> &[Self::F] {
+        self.down_f
+    }
+
+    #[inline]
+    fn down_ef(&self) -> &[Self::EF] {
+        self.down_ef
+    }
+
+    #[inline]
+    fn assert_zero(&mut self, x: Self::F) {
         let alpha_power = self.alpha_powers[self.constraint_index];
-        let x: EFPacking<EF> = x.into();
         self.accumulator += x * alpha_power;
         self.constraint_index += 1;
     }
 
     #[inline]
-    fn add_custom(&mut self, value: Self::FinalOutput) {
-        self.accumulator += value;
+    fn assert_zero_ef(&mut self, x: Self::EF) {
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += x * alpha_power;
         self.constraint_index += 1;
+    }
+
+    #[inline]
+    fn eval_custom(&mut self, x: Self::EF) {
+        self.assert_zero_ef(x);
     }
 }

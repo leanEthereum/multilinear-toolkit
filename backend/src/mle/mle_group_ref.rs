@@ -66,6 +66,10 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
         }
     }
 
+    pub fn is_extension(&self) -> bool {
+        matches!(self, Self::Extension(_) | Self::ExtensionPacked(_))
+    }
+
     pub const fn n_columns(&self) -> usize {
         match self {
             Self::Base(v) => v.len(),

@@ -22,26 +22,26 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     }
 
     #[inline(always)]
-    fn eval_base(&self, point: &[PF<EF>], alphas: &[EF]) -> EF {
+    fn eval_base(&self, point: &[PF<EF>], _: &[EF], alphas: &[EF]) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_extension(&self, point: &[EF], alphas: &[EF]) -> EF {
+    fn eval_extension(&self, point: &[EF], _: &[EF], alphas: &[EF]) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alphas[i]));
         my_dot_product(&alphas_packed[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&inner[1..], &alphas[1..]) + inner[0]
     }

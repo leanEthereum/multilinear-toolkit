@@ -63,10 +63,17 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
         }
     }
 
+    pub fn is_extension(&self) -> bool {
+        match self {
+            Self::Owned(o) => o.is_extension(),
+            Self::Ref(r) => r.is_extension(),
+        }
+    }
+
     pub fn as_owned_or_clone(self) -> MleGroupOwned<EF> {
         match self {
             Self::Owned(owned) => owned,
-            Self::Ref(r) => r.clone_to_owned()
+            Self::Ref(r) => r.clone_to_owned(),
         }
     }
 }

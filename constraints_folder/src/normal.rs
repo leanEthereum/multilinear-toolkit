@@ -8,7 +8,10 @@ where
     NF: ExtensionField<PF<EF>>,
     EF: ExtensionField<NF>,
 {
-    pub main: &'a [NF],
+    pub up_f: &'a [NF],
+    pub up_ef: &'a [EF],
+    pub down_f: &'a [NF],
+    pub down_ef: &'a [EF],
     pub alpha_powers: &'a [EF],
     pub accumulator: EF,
     pub constraint_index: usize,
@@ -19,25 +22,45 @@ where
     NF: ExtensionField<PF<EF>>,
     EF: Field + ExtensionField<NF>,
 {
-    type Expr = NF;
-    type FinalOutput = EF;
+    type F = NF;
+    type EF = EF;
 
     #[inline]
-    fn main(&self) -> &[NF] {
-        self.main
+    fn up_f(&self) -> &[Self::F] {
+        self.up_f
     }
 
     #[inline]
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-        let x: NF = x.into();
+    fn up_ef(&self) -> &[Self::EF] {
+        self.up_ef
+    }
+
+    #[inline]
+    fn down_f(&self) -> &[Self::F] {
+        self.down_f
+    }
+
+    #[inline]
+    fn down_ef(&self) -> &[Self::EF] {
+        self.down_ef
+    }
+
+    #[inline]
+    fn assert_zero(&mut self, x: NF) {
         let alpha_power = self.alpha_powers[self.constraint_index];
         self.accumulator += alpha_power * x;
         self.constraint_index += 1;
     }
 
     #[inline]
-    fn add_custom(&mut self, value: Self::FinalOutput) {
-        self.accumulator += value;
+    fn assert_zero_ef(&mut self, x: EF) {
+        let alpha_power = self.alpha_powers[self.constraint_index];
+        self.accumulator += alpha_power * x;
         self.constraint_index += 1;
+    }
+
+    #[inline]
+    fn eval_custom(&mut self, x: Self::EF) {
+        self.assert_zero_ef(x);
     }
 }
