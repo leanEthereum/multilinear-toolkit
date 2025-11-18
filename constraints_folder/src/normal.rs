@@ -21,7 +21,6 @@ where
 {
     type F = PF<EF>;
     type Expr = NF;
-    type Var = NF;
     type FinalOutput = EF;
 
     #[inline]
