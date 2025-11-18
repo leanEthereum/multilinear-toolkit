@@ -52,7 +52,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedBase<'
     }
 
     #[inline]
-    fn eval_custom(&mut self, x: Self::EF) {
+    fn eval_virtual_column(&mut self, x: Self::EF) {
         self.assert_zero_ef(x);
     }
 }
@@ -107,7 +107,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> AirBuilder for ConstraintFolderPackedExtens
     }
 
     #[inline]
-    fn eval_custom(&mut self, x: Self::EF) {
+    fn eval_virtual_column(&mut self, x: Self::EF) {
         self.assert_zero_ef(x);
     }
 }

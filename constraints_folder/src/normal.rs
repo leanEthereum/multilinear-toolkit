@@ -60,7 +60,7 @@ where
     }
 
     #[inline]
-    fn eval_custom(&mut self, x: Self::EF) {
+    fn eval_virtual_column(&mut self, x: Self::EF) {
         self.assert_zero_ef(x);
     }
 }
