@@ -19,7 +19,6 @@ where
     NF: ExtensionField<PF<EF>>,
     EF: Field + ExtensionField<NF>,
 {
-    type F = PF<EF>;
     type Expr = NF;
     type FinalOutput = EF;
 
