@@ -26,13 +26,7 @@ pub trait SumcheckComputationForAir {}
 impl<EF, A> SumcheckComputation<EF> for A
 where
     EF: ExtensionField<PF<EF>>,
-    A: SumcheckComputationForAir
-        + Send
-        + Sync
-        + for<'a> Air<ConstraintFolderPackedBase<'a, EF>>
-        + for<'a> Air<ConstraintFolderPackedExtension<'a, EF>>
-        + for<'a> Air<ConstraintFolder<'a, PF<EF>, EF>>
-        + for<'a> Air<ConstraintFolder<'a, EF, EF>>,
+    A: SumcheckComputationForAir + Send + Sync + Air,
 {
     #[inline(always)]
     fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF {
@@ -42,7 +36,7 @@ where
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::<ConstraintFolder<PF<EF>, EF>>::eval(self, &mut folder);
+        Air::eval(self, &mut folder);
         folder.accumulator
     }
 
@@ -54,7 +48,7 @@ where
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::<ConstraintFolder<EF, EF>>::eval(self, &mut folder);
+        Air::eval(self, &mut folder);
         folder.accumulator
     }
 
@@ -66,7 +60,7 @@ where
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::<ConstraintFolderPackedBase<_>>::eval(self, &mut folder);
+        Air::eval(self, &mut folder);
 
         folder.accumulator
     }
@@ -79,13 +73,13 @@ where
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::<ConstraintFolderPackedExtension<_>>::eval(self, &mut folder);
+        Air::eval(self, &mut folder);
 
         folder.accumulator
     }
 
     fn degree(&self) -> usize {
-        <A as Air<ConstraintFolder<EF, EF>>>::degree(self)
+        Air::degree(self)
     }
 }
 
