@@ -16,7 +16,7 @@ dependencies = [
  "itertools",
  "p3-field",
  "p3-koala-bear",
- "p3-util",
+ "p3-util 0.3.0 (git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles)",
  "rand",
  "rayon",
  "tracing",
@@ -113,7 +113,7 @@ dependencies = [
  "constraints-folder",
  "fiat-shamir",
  "p3-field",
- "p3-util",
+ "p3-util 0.3.0 (git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles)",
  "rayon",
  "sumcheck",
 ]
@@ -155,7 +155,6 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "p3-air"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "p3-field",
  "p3-matrix",
@@ -164,37 +163,34 @@ dependencies = [
 [[package]]
 name = "p3-challenger"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "p3-field",
  "p3-maybe-rayon",
  "p3-symmetric",
- "p3-util",
+ "p3-util 0.3.0",
  "tracing",
 ]
 
 [[package]]
 name = "p3-dft"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "p3-field",
  "p3-matrix",
  "p3-maybe-rayon",
- "p3-util",
+ "p3-util 0.3.0",
  "tracing",
 ]
 
 [[package]]
 name = "p3-field"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "num-bigint",
  "p3-maybe-rayon",
- "p3-util",
+ "p3-util 0.3.0",
  "paste",
  "rand",
  "serde",
@@ -204,7 +200,6 @@ dependencies = [
 [[package]]
 name = "p3-koala-bear"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "num-bigint",
@@ -212,7 +207,7 @@ dependencies = [
  "p3-monty-31",
  "p3-poseidon2",
  "p3-symmetric",
- "p3-util",
+ "p3-util 0.3.0",
  "rand",
  "serde",
 ]
@@ -220,12 +215,11 @@ dependencies = [
 [[package]]
 name = "p3-matrix"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "p3-field",
  "p3-maybe-rayon",
- "p3-util",
+ "p3-util 0.3.0",
  "rand",
  "serde",
  "tracing",
@@ -235,24 +229,21 @@ dependencies = [
 [[package]]
 name = "p3-maybe-rayon"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 
 [[package]]
 name = "p3-mds"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "p3-dft",
  "p3-field",
  "p3-symmetric",
- "p3-util",
+ "p3-util 0.3.0",
  "rand",
 ]
 
 [[package]]
 name = "p3-monty-31"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "num-bigint",
@@ -263,7 +254,7 @@ dependencies = [
  "p3-mds",
  "p3-poseidon2",
  "p3-symmetric",
- "p3-util",
+ "p3-util 0.3.0",
  "paste",
  "rand",
  "serde",
@@ -274,22 +265,27 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "p3-field",
  "p3-mds",
  "p3-symmetric",
- "p3-util",
+ "p3-util 0.3.0",
  "rand",
 ]
 
 [[package]]
 name = "p3-symmetric"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#5475ea9b0b6274517a3299c730e2a363f56116ea"
 dependencies = [
  "itertools",
  "p3-field",
+ "serde",
+]
+
+[[package]]
+name = "p3-util"
+version = "0.3.0"
+dependencies = [
  "serde",
 ]
 
@@ -441,7 +437,7 @@ dependencies = [
  "p3-air",
  "p3-field",
  "p3-koala-bear",
- "p3-util",
+ "p3-util 0.3.0 (git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles)",
  "rayon",
 ]
 
@@ -546,3 +542,7 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "p3-uni-stark"
+version = "0.3.0"
