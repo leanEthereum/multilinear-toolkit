@@ -21,12 +21,10 @@ pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync {
     fn eval_packed_extension(&self, point: &[EFPacking<EF>], alpha_powers: &[EF]) -> EFPacking<EF>;
 }
 
-pub trait SumcheckComputationForAir {}
-
 impl<EF, A> SumcheckComputation<EF> for A
 where
     EF: ExtensionField<PF<EF>>,
-    A: SumcheckComputationForAir + Send + Sync + Air,
+    A: Send + Sync + Air,
 {
     #[inline(always)]
     fn eval_base(&self, point: &[PF<EF>], alpha_powers: &[EF]) -> EF {
