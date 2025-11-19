@@ -1,4 +1,5 @@
 use backend::*;
+use constraints_folder::AlphaPowers;
 use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
@@ -13,7 +14,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     multilinears_f: M,
     multilinears_ef: Option<M>,
     computation: &SC,
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
@@ -23,6 +24,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     sumcheck_fold_and_prove(
         skip,
@@ -30,7 +32,7 @@ where
         multilinears_ef,
         None,
         computation,
-        batching_scalars,
+        extra_data,
         eq_factor,
         is_zerofier,
         prover_state,
@@ -46,7 +48,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     multilinears_ef: Option<M>,
     prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
@@ -56,6 +58,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     let multilinears_f: MleGroup<'a, EF> = multilinears_f.into();
     let multilinears_ef: MleGroup<'a, EF> = match multilinears_ef {
@@ -72,7 +75,7 @@ where
         Some(multilinears_ef),
         prev_folding_factors,
         computation,
-        batching_scalars,
+        extra_data,
         eq_factor,
         is_zerofier,
         prover_state,
@@ -108,7 +111,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     multilinears_ef: Option<M>,
     mut prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     mut eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     mut is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
@@ -125,6 +128,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     let mut multilinears_f: MleGroup<'a, EF> = multilinears_f.into();
     let mut multilinears_ef: MleGroup<'a, EF> = match multilinears_ef {
@@ -180,7 +184,7 @@ where
             prev_folding_factors,
             computation,
             &eq_factor,
-            batching_scalars,
+            extra_data,
             is_zerofier,
             prover_state,
             sum,
@@ -226,7 +230,7 @@ fn compute_and_send_polynomial<'a, EF, SC>(
     prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
     eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
     sum: EF,
@@ -235,6 +239,7 @@ fn compute_and_send_polynomial<'a, EF, SC>(
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
@@ -269,7 +274,7 @@ where
             .map(|(first_eq_factor, _)| first_eq_factor[0]),
         folding_factors: &compute_folding_factors,
         computation,
-        batching_scalars,
+        extra_data,
         missing_mul_factor,
         sum,
     };

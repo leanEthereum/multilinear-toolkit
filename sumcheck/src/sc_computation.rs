@@ -14,20 +14,22 @@ use std::ops::Add;
 use std::ops::Mul;
 
 pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync {
+    type ExtraData: Send + Sync + 'static;
+
     fn degree(&self) -> usize;
-    fn eval_base(&self, point_f: &[PF<EF>], point_ef: &[EF], alpha_powers: &[EF]) -> EF;
-    fn eval_extension(&self, point_f: &[EF], point_ef: &[EF], alpha_powers: &[EF]) -> EF;
+    fn eval_base(&self, point_f: &[PF<EF>], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF;
+    fn eval_extension(&self, point_f: &[EF], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF;
     fn eval_packed_base(
         &self,
         point_f: &[PFPacking<EF>],
         point_ef: &[EFPacking<EF>],
-        alpha_powers: &[EF],
+        extra_data: &Self::ExtraData,
     ) -> EFPacking<EF>;
     fn eval_packed_extension(
         &self,
         point_f: &[EFPacking<EF>],
         point_ef: &[EFPacking<EF>],
-        alpha_powers: &[EF],
+        extra_data: &Self::ExtraData,
     ) -> EFPacking<EF>;
 }
 
@@ -35,34 +37,37 @@ impl<EF, A> SumcheckComputation<EF> for A
 where
     EF: ExtensionField<PF<EF>>,
     A: Send + Sync + Air,
+    A::ExtraData: AlphaPowers<EF>,
 {
+    type ExtraData = A::ExtraData;
+
     #[inline(always)]
-    fn eval_base(&self, point_f: &[PF<EF>], point_ef: &[EF], alpha_powers: &[EF]) -> EF {
+    fn eval_base(&self, point_f: &[PF<EF>], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF {
         let mut folder = ConstraintFolder {
             up_f: &point_f[..A::n_columns_f()],
             down_f: &point_f[A::n_columns_f()..],
             up_ef: &point_ef[..A::n_columns_ef()],
             down_ef: &point_ef[A::n_columns_ef()..],
-            alpha_powers,
+            extra_data,
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder);
+        Air::eval(self, &mut folder, extra_data);
         folder.accumulator
     }
 
     #[inline(always)]
-    fn eval_extension(&self, point_f: &[EF], point_ef: &[EF], alpha_powers: &[EF]) -> EF {
+    fn eval_extension(&self, point_f: &[EF], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF {
         let mut folder = ConstraintFolder {
             up_f: &point_f[..A::n_columns_f()],
             down_f: &point_f[A::n_columns_f()..],
             up_ef: &point_ef[..A::n_columns_ef()],
             down_ef: &point_ef[A::n_columns_ef()..],
-            alpha_powers,
+            extra_data,
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder);
+        Air::eval(self, &mut folder, extra_data);
         folder.accumulator
     }
 
@@ -71,19 +76,18 @@ where
         &self,
         point_f: &[PFPacking<EF>],
         point_ef: &[EFPacking<EF>],
-        alpha_powers: &[EF],
+        extra_data: &Self::ExtraData,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedBase {
             up_f: &point_f[..A::n_columns_f()],
             down_f: &point_f[A::n_columns_f()..],
             up_ef: &point_ef[..A::n_columns_ef()],
             down_ef: &point_ef[A::n_columns_ef()..],
-            alpha_powers,
+            extra_data,
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder);
-
+        Air::eval(self, &mut folder, extra_data);
         folder.accumulator
     }
 
@@ -92,19 +96,18 @@ where
         &self,
         point_f: &[EFPacking<EF>],
         point_ef: &[EFPacking<EF>],
-        alpha_powers: &[EF],
+        extra_data: &Self::ExtraData,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedExtension {
             up_f: &point_f[..A::n_columns_f()],
             down_f: &point_f[A::n_columns_f()..],
             up_ef: &point_ef[..A::n_columns_ef()],
             down_ef: &point_ef[A::n_columns_ef()..],
-            alpha_powers,
+            extra_data,
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder);
-
+        Air::eval(self, &mut folder, extra_data);
         folder.accumulator
     }
 
@@ -121,6 +124,7 @@ pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
 ) -> Vec<(PF<EF>, EF)>
 where
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     let SumcheckComputeParams {
         skips,
@@ -128,7 +132,7 @@ where
         first_eq_factor,
         folding_factors,
         computation,
-        batching_scalars,
+        extra_data,
         missing_mul_factor,
         sum,
     } = params;
@@ -143,7 +147,7 @@ where
     // TODO handle this in a more general way
     if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
         assert!(missing_mul_factor.is_none());
-        assert!(batching_scalars.is_empty());
+        assert!(extra_data.alpha_powers().is_empty());
         assert_eq!(group_f.n_columns(), 2);
         assert_eq!(group_ef.n_columns(), 0);
 
@@ -178,7 +182,7 @@ where
                 &multilinears[1],
                 &multilinears[2],
                 &multilinears[3],
-                batching_scalars[1],
+                extra_data.alpha_powers()[1],
                 first_eq_factor.unwrap(),
                 eq_mle.unwrap().as_extension().unwrap(),
                 missing_mul_factor.unwrap_or(EF::ONE),
@@ -190,7 +194,7 @@ where
                 &multilinears[1],
                 &multilinears[2],
                 &multilinears[3],
-                batching_scalars[1],
+                extra_data.alpha_powers()[1],
                 first_eq_factor.unwrap(),
                 eq_mle.unwrap().as_extension_packed().unwrap(),
                 missing_mul_factor.unwrap_or(EF::ONE),
@@ -217,7 +221,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 packed_fold_size,
             )
@@ -233,7 +237,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 packed_fold_size,
             )
@@ -249,7 +253,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 fold_size,
             )
@@ -265,7 +269,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 fold_size,
             )
@@ -282,6 +286,7 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
 ) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>, MleGroupOwned<EF>)
 where
     SC: SumcheckComputation<EF> + 'static,
+    SC::ExtraData: AlphaPowers<EF>,
 {
     let SumcheckComputeParams {
         skips,
@@ -289,7 +294,7 @@ where
         first_eq_factor,
         folding_factors,
         computation,
-        batching_scalars,
+        extra_data,
         missing_mul_factor,
         sum,
     } = params;
@@ -304,7 +309,7 @@ where
     // TODO handle this in a more general way
     if TypeId::of::<SC>() == TypeId::of::<ProductComputation>() && eq_mle.is_none() {
         assert!(missing_mul_factor.is_none());
-        assert!(batching_scalars.is_empty());
+        assert!(extra_data.alpha_powers().is_empty());
         assert_eq!(group_f.n_columns(), 2);
         assert_eq!(group_ef.n_columns(), 0);
         assert!(
@@ -366,7 +371,7 @@ where
                     &multilinears[1],
                     &multilinears[2],
                     &multilinears[3],
-                    batching_scalars[1],
+                    extra_data.alpha_powers()[1],
                     first_eq_factor.unwrap(),
                     eq_mle.unwrap().as_extension().unwrap(),
                     missing_mul_factor.unwrap_or(EF::ONE),
@@ -383,7 +388,7 @@ where
                     &multilinears[1],
                     &multilinears[2],
                     &multilinears[3],
-                    batching_scalars[1],
+                    extra_data.alpha_powers()[1],
                     first_eq_factor.unwrap(),
                     eq_mle.unwrap().as_extension_packed().unwrap(),
                     missing_mul_factor.unwrap_or(EF::ONE),
@@ -419,7 +424,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 compute_fold_size,
                 |wpf, ef| wpf * ef,
@@ -437,7 +442,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 compute_fold_size,
                 |wpf, ef| EFPacking::<EF>::from(ef) * wpf,
@@ -455,7 +460,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 fold_size,
             )
@@ -472,7 +477,7 @@ where
                 eq_mle,
                 folding_factors,
                 computation,
-                batching_scalars,
+                extra_data,
                 missing_mul_factor,
                 fold_size,
             )
@@ -481,13 +486,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC> {
+pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckComputation<EF>> {
     pub skips: usize,
     pub eq_mle: Option<&'a MleOwned<EF>>,
     pub first_eq_factor: Option<EF>,
     pub folding_factors: &'a [Vec<PF<EF>>],
     pub computation: &'a SC,
-    pub batching_scalars: &'a [EF],
+    pub extra_data: &'a SC::ExtraData,
     pub missing_mul_factor: Option<EF>,
     pub sum: EF,
 }
@@ -504,7 +509,7 @@ fn sumcheck_compute_not_packed<
     eq_mle: Option<&[EF]>,
     folding_factors: &[Vec<PF<EF>>],
     computation: &SC,
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     missing_mul_factor: Option<EF>,
     fold_size: usize,
 ) -> Vec<(PF<EF>, EF)>
@@ -557,11 +562,11 @@ where
                     let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
                         let point_f =
                             unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point_f) };
-                        computation.eval_base(&point_f, &point_ef, batching_scalars)
+                        computation.eval_base(&point_f, &point_ef, extra_data)
                     } else {
                         assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
                         let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point_f) };
-                        computation.eval_extension(&point_f, &point_ef, batching_scalars)
+                        computation.eval_extension(&point_f, &point_ef, extra_data)
                     };
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
@@ -603,7 +608,7 @@ fn sumcheck_fold_and_compute_not_packed<
     eq_mle: Option<&[EF]>,
     folding_factors: &[Vec<PF<EF>>],
     computation: &SC,
-    batching_scalars: &[EF],
+    extra_data: &SC::ExtraData,
     missing_mul_factor: Option<EF>,
     compute_fold_size: usize,
 ) -> (Vec<(PF<EF>, EF)>, MleGroupOwned<EF>, MleGroupOwned<EF>)
@@ -702,7 +707,7 @@ where
                         })
                         .collect::<Vec<_>>();
 
-                    let mut res = computation.eval_extension(&point_f, &point_ef, batching_scalars);
+                    let mut res = computation.eval_extension(&point_f, &point_ef, extra_data);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }
@@ -746,7 +751,7 @@ fn sumcheck_compute_packed<
     eq_mle: Option<&[EFPacking<EF>]>,
     folding_factors: &[Vec<PF<EF>>],
     computation_packed: &SCP,
-    batching_scalars: &[EF],
+    extra_data: &SCP::ExtraData,
     missing_mul_factor: Option<EF>,
     packed_fold_size: usize,
 ) -> Vec<(PF<EF>, EF)> {
@@ -804,15 +809,11 @@ fn sumcheck_compute_packed<
                     let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
                         let point_f =
                             unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point_f) };
-                        computation_packed.eval_packed_base(&point_f, &point_ef, batching_scalars)
+                        computation_packed.eval_packed_base(&point_f, &point_ef, extra_data)
                     } else {
                         let point_f =
                             unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point_f) };
-                        computation_packed.eval_packed_extension(
-                            &point_f,
-                            &point_ef,
-                            batching_scalars,
-                        )
+                        computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data)
                     };
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
@@ -855,7 +856,7 @@ fn sumcheck_fold_and_compute_packed<
     eq_mle: Option<&[EFPacking<EF>]>,
     folding_factors: &[Vec<PF<EF>>],
     computation_packed: &SCP,
-    batching_scalars: &[EF],
+    extra_data: &SCP::ExtraData,
     missing_mul_factor: Option<EF>,
     compute_fold_size: usize,
     mul: impl Fn(WPF, EF) -> EFPacking<EF> + Sync + Send,
@@ -967,11 +968,8 @@ where
                                 .sum::<EFPacking<EF>>()
                         })
                         .collect::<Vec<_>>();
-                    let mut res = computation_packed.eval_packed_extension(
-                        &point_f,
-                        &point_ef,
-                        batching_scalars,
-                    );
+                    let mut res =
+                        computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data);
                     if let Some(eq_mle_eval) = eq_mle_eval {
                         res *= eq_mle_eval;
                     }

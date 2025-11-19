@@ -17,33 +17,35 @@ pub struct GKRQuotientComputation<const N: usize>;
 impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for GKRQuotientComputation<N>
 {
+    type ExtraData = Vec<EF>;
+
     fn degree(&self) -> usize {
         2
     }
 
     #[inline(always)]
-    fn eval_base(&self, point: &[PF<EF>], _: &[EF], alphas: &[EF]) -> EF {
+    fn eval_base(&self, point: &[PF<EF>], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
-        my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
+        my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_extension(&self, point: &[EF], _: &[EF], alphas: &[EF]) -> EF {
+    fn eval_extension(&self, point: &[EF], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
-        my_dot_product(&alphas[1..], &inner[1..]) + inner[0]
+        my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EFPacking<EF>], alpha_powers: &Self::ExtraData) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
-        let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alphas[i]));
+        let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alpha_powers[i]));
         my_dot_product(&alphas_packed[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EFPacking<EF>], alphas: &[EF]) -> EFPacking<EF> {
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EFPacking<EF>], alpha_powers: &Self::ExtraData) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
-        my_dot_product(&inner[1..], &alphas[1..]) + inner[0]
+        my_dot_product(&inner[1..], &alpha_powers[1..]) + inner[0]
     }
 }
 
