@@ -44,10 +44,10 @@ where
     #[inline(always)]
     fn eval_base(&self, point_f: &[PF<EF>], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF {
         let mut folder = ConstraintFolder {
-            up_f: &point_f[..self.n_columns_f()],
-            down_f: &point_f[self.n_columns_f()..],
-            up_ef: &point_ef[..self.n_columns_ef()],
-            down_ef: &point_ef[self.n_columns_ef()..],
+            up_f: &point_f[..self.n_columns_f_air()],
+            down_f: &point_f[self.n_columns_f_air()..],
+            up_ef: &point_ef[..self.n_columns_ef_air()],
+            down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
             accumulator: EF::ZERO,
             constraint_index: 0,
@@ -59,10 +59,10 @@ where
     #[inline(always)]
     fn eval_extension(&self, point_f: &[EF], point_ef: &[EF], extra_data: &Self::ExtraData) -> EF {
         let mut folder = ConstraintFolder {
-            up_f: &point_f[..self.n_columns_f()],
-            down_f: &point_f[self.n_columns_f()..],
-            up_ef: &point_ef[..self.n_columns_ef()],
-            down_ef: &point_ef[self.n_columns_ef()..],
+            up_f: &point_f[..self.n_columns_f_air()],
+            down_f: &point_f[self.n_columns_f_air()..],
+            up_ef: &point_ef[..self.n_columns_ef_air()],
+            down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
             accumulator: EF::ZERO,
             constraint_index: 0,
@@ -79,10 +79,10 @@ where
         extra_data: &Self::ExtraData,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedBase {
-            up_f: &point_f[..self.n_columns_f()],
-            down_f: &point_f[self.n_columns_f()..],
-            up_ef: &point_ef[..self.n_columns_ef()],
-            down_ef: &point_ef[self.n_columns_ef()..],
+            up_f: &point_f[..self.n_columns_f_air()],
+            down_f: &point_f[self.n_columns_f_air()..],
+            up_ef: &point_ef[..self.n_columns_ef_air()],
+            down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
             accumulator: Default::default(),
             constraint_index: 0,
@@ -99,10 +99,10 @@ where
         extra_data: &Self::ExtraData,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedExtension {
-            up_f: &point_f[..self.n_columns_f()],
-            down_f: &point_f[self.n_columns_f()..],
-            up_ef: &point_ef[..self.n_columns_ef()],
-            down_ef: &point_ef[self.n_columns_ef()..],
+            up_f: &point_f[..self.n_columns_f_air()],
+            down_f: &point_f[self.n_columns_f_air()..],
+            up_ef: &point_ef[..self.n_columns_ef_air()],
+            down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
             accumulator: Default::default(),
             constraint_index: 0,
