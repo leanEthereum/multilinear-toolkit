@@ -1,73 +1,108 @@
-use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, uninitialized_vec};
+use std::{
+    array,
+    ops::{Add, Mul},
+};
+
+use backend::{DensePolynomial, par_iter_split_2, par_zip_fold_2, transmute_array, uninitialized_vec};
 use fiat_shamir::{EFPacking, PF, PFPacking};
 use p3_field::{Algebra, ExtensionField, Field};
+use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::*;
 
-use crate::{SumcheckComputation, SumcheckComputationPacked, sumcheck_quadratic};
+use crate::{SumcheckComputation, sumcheck_quadratic};
 
-pub struct GKRQuotientComputation<EF> {
-    pub u4_const: EF,
-    pub u5_const: EF,
-}
+#[derive(Default, Debug)]
+pub struct GKRQuotientComputation<const N: usize>;
 
-impl<IF: ExtensionField<PF<EF>>, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
-    for GKRQuotientComputation<EF>
+impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
+    for GKRQuotientComputation<N>
 {
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
-        // U4.U2.U3 + U5.[U0.U3 + U1.U2]
-        self.u4_const * point[2] * point[3]
-            + self.u5_const * (point[0] * point[3] + point[1] * point[2])
-    }
+    type ExtraData = Vec<EF>;
+
     fn degree(&self) -> usize {
         2
     }
+
+    #[inline(always)]
+    fn eval_base(&self, point: &[PF<EF>], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
+    }
+
+    #[inline(always)]
+    fn eval_extension(&self, point: &[EF], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
+    }
+
+    #[inline(always)]
+    fn eval_packed_base(&self, point: &[PFPacking<EF>], _: &[EFPacking<EF>], alpha_powers: &Self::ExtraData) -> EFPacking<EF> {
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alpha_powers[i]));
+        my_dot_product(&alphas_packed[1..], &inner[1..]) + inner[0]
+    }
+
+    #[inline(always)]
+    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EFPacking<EF>], alpha_powers: &Self::ExtraData) -> EFPacking<EF> {
+        let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
+        my_dot_product(&inner[1..], &alpha_powers[1..]) + inner[0]
+    }
 }
 
-impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for GKRQuotientComputation<EF> {
-    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        todo!()
-    }
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        point[2] * point[3] * self.u4_const
-            + (point[0] * point[3] + point[1] * point[2]) * self.u5_const
-    }
-    fn degree(&self) -> usize {
-        2
+#[inline(always)]
+pub fn sum_fractions_const_2_by_2<const N: usize, A: Copy + Mul<Output = A> + Add<Output = A>>(
+    numerators: &[A],
+    denominators: &[A],
+) -> [A; N] {
+    debug_assert_eq!(numerators.len(), N);
+    debug_assert_eq!(denominators.len(), N);
+    match N {
+        2 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            denominators[0] * denominators[1],
+        ]),
+        4 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            numerators[2] * denominators[3] + numerators[3] * denominators[2],
+            denominators[0] * denominators[1],
+            denominators[2] * denominators[3],
+        ]),
+        8 => transmute_array([
+            numerators[0] * denominators[1] + numerators[1] * denominators[0],
+            numerators[2] * denominators[3] + numerators[3] * denominators[2],
+            numerators[4] * denominators[5] + numerators[5] * denominators[4],
+            numerators[6] * denominators[7] + numerators[7] * denominators[6],
+            denominators[0] * denominators[1],
+            denominators[2] * denominators[3],
+            denominators[4] * denominators[5],
+            denominators[6] * denominators[7],
+        ]),
+        _ => unimplemented!(),
     }
 }
 
-pub struct GKRQuotientCrossComputation {}
-
-impl<IF: Field, EF: ExtensionField<IF>> SumcheckComputation<IF, EF>
-    for GKRQuotientCrossComputation
+#[inline(always)]
+fn my_dot_product<A1: Copy, A2: Copy>(a: &[A1], b: &[A2]) -> A1
+where
+    A1: Algebra<A2>,
 {
-    fn eval(&self, point: &[IF], _: &[EF]) -> EF {
-        EF::from(point[0] * point[3] + point[1] * point[2])
+    debug_assert_eq!(a.len(), b.len());
+    let mut res = a[0] * b[0];
+    for (x, y) in a.iter().zip(b.iter()).skip(1) {
+        res += *x * *y;
     }
-    fn degree(&self) -> usize {
-        2
-    }
+    res
 }
 
-impl<EF: ExtensionField<PF<EF>>> SumcheckComputationPacked<EF> for GKRQuotientCrossComputation {
-    fn eval_packed_base(&self, _: &[PFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        todo!()
-    }
-    fn eval_packed_extension(&self, point: &[EFPacking<EF>], _: &[EF]) -> EFPacking<EF> {
-        point[0] * point[3] + point[1] * point[2]
-    }
-    fn degree(&self) -> usize {
-        2
-    }
-}
-
-pub fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + Sync, EF: Field>(
+pub(crate) fn compute_gkr_quotient_sumcheck_polynomial<
+    F: Algebra<EF> + Copy + Send + Sync,
+    EF: Field,
+>(
     u0: &[F],
     u1: &[F],
     u2: &[F],
     u3: &[F],
-    u4_const: EF,
-    u5_const: EF,
+    alpha: EF,
     first_eq_factor: EF,
     eq_mle: &[F],
     missing_mul_factor: EF,
@@ -117,8 +152,8 @@ pub fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + S
             |(a0, a1, a2, a3), (b0, b1, b2, b3)| (a0 + b0, a1 + b1, a2 + b2, a3 + b3),
         );
 
-    let c0 = c0_term_single * u4_const + c0_term_double * u5_const;
-    let c2 = c2_term_single * u4_const + c2_term_double * u5_const;
+    let c0 = c0_term_single * alpha + c0_term_double;
+    let c2 = c2_term_single * alpha + c2_term_double;
 
     let c0 = decompose(c0).into_iter().sum::<EF>();
     let c2 = decompose(c2).into_iter().sum::<EF>();
@@ -132,7 +167,7 @@ pub fn compute_gkr_quotient_sumcheck_polynomial<F: Algebra<EF> + Copy + Send + S
     ])
 }
 
-pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
+pub(crate) fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     F: Algebra<EF> + Copy + Send + Sync,
     EF: Field,
 >(
@@ -141,8 +176,7 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
     u1: &[F],
     u2: &[F],
     u3: &[F],
-    u4_const: EF,
-    u5_const: EF,
+    alpha: EF,
     first_eq_factor: EF,
     eq_mle: &[F],
     missing_mul_factor: EF,
@@ -208,8 +242,8 @@ pub fn fold_and_compute_gkr_quotient_sumcheck_polynomial<
                 |(a0, a1, a2, a3), (b0, b1, b2, b3)| (a0 + b0, a1 + b1, a2 + b2, a3 + b3),
             );
 
-    let c0 = c0_term_single * u4_const + c0_term_double * u5_const;
-    let c2 = c2_term_single * u4_const + c2_term_double * u5_const;
+    let c0 = c0_term_single * alpha + c0_term_double;
+    let c2 = c2_term_single * alpha + c2_term_double;
 
     let c0 = decompose(c0).into_iter().sum::<EF>();
     let c2 = decompose(c2).into_iter().sum::<EF>();

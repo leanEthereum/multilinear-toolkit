@@ -26,6 +26,17 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
         }
     }
 
+    pub fn as_extension(self) -> Option<Vec<Vec<EF>>> {
+        match self {
+            Self::Extension(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn is_extension(&self) -> bool {
+        matches!(self, Self::Extension(_) | Self::ExtensionPacked(_))
+    }
+
     pub fn is_packed(&self) -> bool {
         matches!(self, Self::BasePacked(_) | Self::ExtensionPacked(_))
     }
@@ -96,6 +107,15 @@ impl<EF: ExtensionField<PF<EF>>> MleGroupOwned<EF> {
                     .map(|m| m.into_extension_packed().unwrap())
                     .collect(),
             ),
+        }
+    }
+
+    pub fn empty(extension: bool, packed: bool) -> Self {
+        match (extension, packed) {
+            (false, false) => Self::Base(Vec::new()),
+            (true, false) => Self::Extension(Vec::new()),
+            (false, true) => Self::BasePacked(Vec::new()),
+            (true, true) => Self::ExtensionPacked(Vec::new()),
         }
     }
 }

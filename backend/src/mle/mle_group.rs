@@ -24,7 +24,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
     pub fn by_ref(&'a self) -> MleGroupRef<'a, EF> {
         match self {
             Self::Owned(owned) => owned.by_ref(),
-            Self::Ref(r) => r.clone(),
+            Self::Ref(r) => r.soft_clone(),
         }
     }
 
@@ -60,6 +60,20 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroup<'a, EF> {
         match self {
             Self::Owned(owned) => owned.is_packed(),
             Self::Ref(r) => r.is_packed(),
+        }
+    }
+
+    pub fn is_extension(&self) -> bool {
+        match self {
+            Self::Owned(o) => o.is_extension(),
+            Self::Ref(r) => r.is_extension(),
+        }
+    }
+
+    pub fn as_owned_or_clone(self) -> MleGroupOwned<EF> {
+        match self {
+            Self::Owned(owned) => owned,
+            Self::Ref(r) => r.clone_to_owned(),
         }
     }
 }

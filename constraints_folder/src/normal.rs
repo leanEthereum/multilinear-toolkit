@@ -1,60 +1,68 @@
 use fiat_shamir::*;
 use p3_air::AirBuilder;
 use p3_field::{ExtensionField, Field};
-use p3_matrix::dense::RowMajorMatrixView;
+
+use crate::AlphaPowers;
 
 #[derive(Debug)]
-pub struct ConstraintFolder<'a, NF, EF>
+pub struct ConstraintFolder<'a, NF, EF, ExtraData: AlphaPowers<EF>>
 where
     NF: ExtensionField<PF<EF>>,
     EF: ExtensionField<NF>,
 {
-    pub main: RowMajorMatrixView<'a, NF>,
-    pub alpha_powers: &'a [EF],
+    pub up_f: &'a [NF],
+    pub up_ef: &'a [EF],
+    pub down_f: &'a [NF],
+    pub down_ef: &'a [EF],
+    pub extra_data: &'a ExtraData,
     pub accumulator: EF,
     pub constraint_index: usize,
 }
 
-impl<'a, NF, EF> AirBuilder for ConstraintFolder<'a, NF, EF>
+impl<'a, NF, EF, ExtraData: AlphaPowers<EF>> AirBuilder for ConstraintFolder<'a, NF, EF, ExtraData>
 where
     NF: ExtensionField<PF<EF>>,
     EF: Field + ExtensionField<NF>,
 {
-    type F = PF<EF>;
-    type Expr = NF;
-    type Var = NF;
-    type M = RowMajorMatrixView<'a, NF>;
+    type F = NF;
+    type EF = EF;
 
     #[inline]
-    fn main(&self) -> Self::M {
-        self.main
+    fn up_f(&self) -> &[Self::F] {
+        self.up_f
     }
 
     #[inline]
-    fn is_first_row(&self) -> Self::Expr {
-        unreachable!()
+    fn up_ef(&self) -> &[Self::EF] {
+        self.up_ef
     }
 
     #[inline]
-    fn is_last_row(&self) -> Self::Expr {
-        unreachable!()
+    fn down_f(&self) -> &[Self::F] {
+        self.down_f
     }
 
     #[inline]
-    fn is_transition_window(&self, _: usize) -> Self::Expr {
-        unreachable!()
+    fn down_ef(&self) -> &[Self::EF] {
+        self.down_ef
     }
 
     #[inline]
-    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
-        let x: NF = x.into();
-        let alpha_power = self.alpha_powers[self.constraint_index];
+    fn assert_zero(&mut self, x: NF) {
+        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
         self.accumulator += alpha_power * x;
         self.constraint_index += 1;
     }
 
     #[inline]
-    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, _: [I; N]) {
-        unreachable!()
+    fn assert_zero_ef(&mut self, x: EF) {
+        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
+        self.accumulator += alpha_power * x;
+        self.constraint_index += 1;
+    }
+
+    #[inline]
+    fn eval_virtual_column(&mut self, x: Self::EF) {
+        self.assert_zero_ef(x);
     }
 }

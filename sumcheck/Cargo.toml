@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 p3-field.workspace = true
-p3-matrix.workspace = true
 p3-air.workspace = true
 p3-util.workspace = true
 backend.workspace = true

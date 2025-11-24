@@ -4,7 +4,7 @@ use p3_field::ExtensionField;
 use p3_field::PackedValue;
 use p3_util::log2_strict_usize;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum MleGroupRef<'a, EF: ExtensionField<PF<EF>>> {
     Base(Vec<&'a [PF<EF>]>),
     Extension(Vec<&'a [EF]>),
@@ -66,6 +66,10 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
         }
     }
 
+    pub fn is_extension(&self) -> bool {
+        matches!(self, Self::Extension(_) | Self::ExtensionPacked(_))
+    }
+
     pub const fn n_columns(&self) -> usize {
         match self {
             Self::Base(v) => v.len(),
@@ -88,24 +92,22 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
                 MleGroupOwned::ExtensionPacked(ext.iter().map(|v| pack_extension(v)).collect())
                     .into()
             }
-            Self::BasePacked(_) | Self::ExtensionPacked(_) => self.clone().into(),
+            Self::BasePacked(_) | Self::ExtensionPacked(_) => self.soft_clone().into(),
         }
     }
 
-    // Clone everything in the group, should not be used when n_vars is large
-    pub fn unpack(&self) -> MleGroupOwned<EF> {
+    /// performs a "real" clone only in case `Self::ExtensionPacked`
+    pub fn unpack(&self) -> MleGroup<'_, EF> {
         match self {
-            Self::Base(pols) => MleGroupOwned::Base(pols.iter().map(|v| v.to_vec()).collect()),
-            Self::Extension(pols) => {
-                MleGroupOwned::Extension(pols.iter().map(|v| v.to_vec()).collect())
-            }
-            Self::BasePacked(pols) => MleGroupOwned::Base(
+            Self::Base(_) | Self::Extension(_) => self.soft_clone().into(),
+            Self::BasePacked(pols) => MleGroupRef::Base(
                 pols.iter()
-                    .map(|v| PFPacking::<EF>::unpack_slice(v).to_vec())
+                    .map(|v| PFPacking::<EF>::unpack_slice(v))
                     .collect(),
-            ),
+            )
+            .into(),
             Self::ExtensionPacked(pols) => {
-                MleGroupOwned::Extension(pols.iter().map(|v| unpack_extension(v)).collect())
+                MleGroupOwned::Extension(pols.iter().map(|v| unpack_extension(v)).collect()).into()
             }
         }
     }
@@ -149,6 +151,30 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleGroupRef<'a, EF> {
                     .map(|m| m.as_extension_packed().unwrap())
                     .collect(),
             ),
+        }
+    }
+
+    pub fn soft_clone(&self) -> MleGroupRef<'a, EF> {
+        match self {
+            Self::Base(v) => MleGroupRef::Base(v.clone()),
+            Self::Extension(v) => MleGroupRef::Extension(v.clone()),
+            Self::BasePacked(v) => MleGroupRef::BasePacked(v.clone()),
+            Self::ExtensionPacked(v) => MleGroupRef::ExtensionPacked(v.clone()),
+        }
+    }
+
+    pub fn clone_to_owned(&self) -> MleGroupOwned<EF> {
+        match self {
+            Self::Base(pols) => MleGroupOwned::Base(pols.iter().map(|v| v.to_vec()).collect()),
+            Self::Extension(pols) => {
+                MleGroupOwned::Extension(pols.iter().map(|v| v.to_vec()).collect())
+            }
+            Self::BasePacked(pols) => {
+                MleGroupOwned::BasePacked(pols.iter().map(|v| v.to_vec()).collect())
+            }
+            Self::ExtensionPacked(pols) => {
+                MleGroupOwned::ExtensionPacked(pols.iter().map(|v| v.to_vec()).collect())
+            }
         }
     }
 }
