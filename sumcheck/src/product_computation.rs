@@ -1,8 +1,8 @@
 use std::ops::Mul;
 
 use backend::{
-    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, par_zip_fold_2,
-    uninitialized_vec,
+    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, PARALLEL_THRESHOLD,
+    par_zip_fold_2, uninitialized_vec, zip_fold_2,
 };
 use fiat_shamir::*;
 use p3_field::*;
@@ -94,7 +94,6 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
     };
 
     prover_state.add_extension_scalars(&first_sumcheck_poly.coeffs);
-    // TODO: re-enable PoW grinding
     let r1: EF = prover_state.sample();
     sum = first_sumcheck_poly.evaluate(r1);
 
@@ -136,7 +135,6 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
     };
 
     prover_state.add_extension_scalars(&second_sumcheck_poly.coeffs);
-    // TODO: re-enable PoW grinding
     let r2: EF = prover_state.sample();
     sum = second_sumcheck_poly.evaluate(r2);
 
@@ -175,18 +173,35 @@ pub fn compute_product_sumcheck_polynomial<
     assert_eq!(n, pol_1.len());
     assert!(n.is_power_of_two());
 
-    let (c0_packed, c2_packed) = pol_0[..n / 2]
-        .par_iter()
-        .zip(pol_0[n / 2..].par_iter())
-        .zip(pol_1[..n / 2].par_iter().zip(pol_1[n / 2..].par_iter()))
-        .map(sumcheck_quadratic)
-        .reduce(
-            || (EFPacking::ZERO, EFPacking::ZERO),
-            |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
-        );
+    let num_elements = n;
+
+    // Extract the computation logic into a closure
+    let compute_coeffs = || {
+        pol_0[..n / 2]
+            .iter()
+            .zip(pol_0[n / 2..].iter())
+            .zip(pol_1[..n / 2].iter().zip(pol_1[n / 2..].iter()))
+            .map(sumcheck_quadratic)
+    };
+
+    let (c0_packed, c2_packed) = if num_elements < PARALLEL_THRESHOLD {
+        compute_coeffs().fold((EFPacking::ZERO, EFPacking::ZERO), |(a0, a2), (b0, b2)| {
+            (a0 + b0, a2 + b2)
+        })
+    } else {
+        pol_0[..n / 2]
+            .par_iter()
+            .zip(pol_0[n / 2..].par_iter())
+            .zip(pol_1[..n / 2].par_iter().zip(pol_1[n / 2..].par_iter()))
+            .map(sumcheck_quadratic)
+            .reduce(
+                || (EFPacking::ZERO, EFPacking::ZERO),
+                |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
+            )
+    };
+
     let c0 = decompose(c0_packed).into_iter().sum::<EF>();
     let c2 = decompose(c2_packed).into_iter().sum::<EF>();
-
     let c1 = sum - c0.double() - c2;
 
     DensePolynomial::new(vec![c0, c1, c2])
@@ -211,9 +226,15 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     let mut pol_0_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
     let mut pol_1_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
 
-    let (c0_packed, c2_packed) = par_zip_fold_2(pol_0, &mut pol_0_folded)
-        .zip(par_zip_fold_2(pol_1, &mut pol_1_folded))
-        .map(|((p0_prev, p0_f), (p1_prev, p1_f))| {
+    let num_elements = n;
+
+    // Extract the computation logic into a closure
+    let process_element =
+        |(p0_prev, p0_f): (((&F, &F), (&F, &F)), (&mut EFPacking, &mut EFPacking)),
+         (p1_prev, p1_f): (
+            ((&EFPacking, &EFPacking), (&EFPacking, &EFPacking)),
+            (&mut EFPacking, &mut EFPacking),
+        )| {
             let pol_0_folded_left =
                 prev_folding_factor_packed * (*p0_prev.1.0 - *p0_prev.0.0) + *p0_prev.0.0;
             let pol_0_folded_right =
@@ -232,14 +253,27 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
                 (&pol_0_folded_left, &pol_0_folded_right),
                 (&pol_1_folded_left, &pol_1_folded_right),
             ))
-        })
-        .reduce(
-            || (EFPacking::ZERO, EFPacking::ZERO),
-            |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
-        );
+        };
+
+    let (c0_packed, c2_packed) = if num_elements < PARALLEL_THRESHOLD {
+        zip_fold_2(pol_0, &mut pol_0_folded)
+            .zip(zip_fold_2(pol_1, &mut pol_1_folded))
+            .map(|(p0, p1)| process_element(p0, p1))
+            .fold((EFPacking::ZERO, EFPacking::ZERO), |(a0, a2), (b0, b2)| {
+                (a0 + b0, a2 + b2)
+            })
+    } else {
+        par_zip_fold_2(pol_0, &mut pol_0_folded)
+            .zip(par_zip_fold_2(pol_1, &mut pol_1_folded))
+            .map(|(p0, p1)| process_element(p0, p1))
+            .reduce(
+                || (EFPacking::ZERO, EFPacking::ZERO),
+                |(a0, a2), (b0, b2)| (a0 + b0, a2 + b2),
+            )
+    };
+
     let c0 = decompose(c0_packed).into_iter().sum::<EF>();
     let c2 = decompose(c2_packed).into_iter().sum::<EF>();
-
     let c1 = sum - c0.double() - c2;
 
     (
@@ -254,13 +288,7 @@ where
     F: PrimeCharacteristicRing + Copy,
     EF: Algebra<F> + Copy,
 {
-    // Compute the constant coefficient:
-    // p(0) * w(0)
     let constant = y_0 * x_0;
-
-    // Compute the quadratic coefficient:
-    // (p(1) - p(0)) * (w(1) - w(0))
     let quadratic = (y_1 - y_0) * (x_1 - x_0);
-
     (constant, quadratic)
 }

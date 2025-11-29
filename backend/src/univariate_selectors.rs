@@ -1,5 +1,4 @@
 use p3_field::Field;
-use rayon::prelude::*;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -25,7 +24,7 @@ pub fn univariate_selectors<F: Field>(n: usize) -> Arc<Vec<DensePolynomial<F>>> 
         .clone();
     cell.get_or_init(|| {
         let v: Vec<DensePolynomial<F>> = (0..(1 << n))
-            .into_par_iter()
+            .into_iter()
             .map(|i| {
                 let values = (0..(1 << n))
                     .map(|j| (F::from_u64(j as u64), if i == j { F::ONE } else { F::ZERO }))

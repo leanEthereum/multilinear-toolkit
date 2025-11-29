@@ -517,73 +517,87 @@ where
     SC: SumcheckComputation<EF>,
 {
     let n = zs.len();
-    let sum_zs_packed = (0..fold_size)
-        .into_par_iter()
-        .map(|i| {
-            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-            let rows_f = multilinears_f
-                .iter()
-                .map(|m| {
-                    (0..1 << skips)
-                        .map(|j| m[i + j * fold_size])
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            let rows_ef = multilinears_ef
-                .iter()
-                .map(|m| {
-                    (0..1 << skips)
-                        .map(|j| m[i + j * fold_size])
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<IF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
 
-                    let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point_f) };
-                        computation.eval_base(&point_f, &point_ef, extra_data)
-                    } else {
-                        assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
-                        let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point_f) };
-                        computation.eval_extension(&point_f, &point_ef, extra_data)
-                    };
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>()
+    let compute_iteration = |i: usize| -> Vec<EF> {
+        let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+        let rows_f = multilinears_f
+            .iter()
+            .map(|m| {
+                (0..1 << skips)
+                    .map(|j| m[i + j * fold_size])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let rows_ef = multilinears_ef
+            .iter()
+            .map(|m| {
+                (0..1 << skips)
+                    .map(|j| m[i + j * fold_size])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        (0..n)
+            .map(|z_index| {
+                let folding_factors_z = &folding_factors[z_index];
+                let point_f = rows_f
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<IF>()
+                    })
+                    .collect::<Vec<_>>();
+                let point_ef = rows_ef
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EF>()
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
+                    let point_f =
+                        unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point_f) };
+                    computation.eval_base(&point_f, &point_ef, extra_data)
+                } else {
+                    assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
+                    let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point_f) };
+                    computation.eval_extension(&point_f, &point_ef, extra_data)
+                };
+                if let Some(eq_mle_eval) = eq_mle_eval {
+                    res *= eq_mle_eval;
+                }
+                res
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let sum_zs_packed = if fold_size < PARALLEL_THRESHOLD {
+        (0..fold_size).fold(vec![EF::ZERO; n], |mut acc, i| {
+            let sums = compute_iteration(i);
+            for (j, sum) in sums.into_iter().enumerate() {
+                acc[j] += sum;
+            }
+            acc
         })
-        .reduce(
-            || vec![EF::ZERO; n],
-            |mut acc, sums| {
-                sums.into_iter().enumerate().for_each(|(i, sum)| {
-                    acc[i] += sum;
-                });
-                acc
-            },
-        );
+    } else {
+        (0..fold_size)
+            .into_par_iter()
+            .map(compute_iteration)
+            .reduce(
+                || vec![EF::ZERO; n],
+                |mut acc, sums| {
+                    sums.into_iter().enumerate().for_each(|(i, sum)| {
+                        acc[i] += sum;
+                    });
+                    acc
+                },
+            )
+    };
+
     let mut evals = vec![];
     for (z_index, z) in zs.iter().enumerate() {
         let mut sum_z = sum_zs_packed[z_index];
@@ -627,103 +641,115 @@ where
         .map(|_| EF::zero_vec(prev_folded_size))
         .collect::<Vec<_>>();
     let n = zs.len();
-    let sum_zs_packed = (0..compute_fold_size)
-        .into_par_iter()
-        .map(|i| {
-            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-            let rows_f = multilinears_f
-                .iter()
-                .enumerate()
-                .map(|(j, m)| {
-                    (0..1 << skips)
-                        .map(|k| {
-                            let id = i + k * compute_fold_size;
-                            let res: EF = if bi_folded {
-                                prev_folding_factors[1] * (m[id + prev_folded_size] - m[id]) + m[id]
-                            } else {
-                                dot_product(
-                                    prev_folding_factors.iter().copied(),
-                                    (0..prev_folding_factors.len())
-                                        .map(|l| m[id + l * prev_folded_size]),
-                                )
-                            };
 
-                            unsafe {
-                                // folded[j][id] = res;
-                                let folded_ptr = folded_f[j].as_ptr() as *mut EF;
-                                *folded_ptr.add(id) = res;
-                            }
-                            res
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            let rows_ef = multilinears_ef
-                .iter()
-                .enumerate()
-                .map(|(j, m)| {
-                    (0..1 << skips)
-                        .map(|k| {
-                            let id = i + k * compute_fold_size;
-                            let res: EF = if bi_folded {
-                                prev_folding_factors[1] * (m[id + prev_folded_size] - m[id]) + m[id]
-                            } else {
-                                dot_product(
-                                    prev_folding_factors.iter().copied(),
-                                    (0..prev_folding_factors.len())
-                                        .map(|l| m[id + l * prev_folded_size]),
-                                )
-                            };
+    let compute_iteration = |i: usize| -> Vec<EF> {
+        let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+        let rows_f = multilinears_f
+            .iter()
+            .enumerate()
+            .map(|(j, m)| {
+                (0..1 << skips)
+                    .map(|k| {
+                        let id = i + k * compute_fold_size;
+                        let res: EF = if bi_folded {
+                            prev_folding_factors[1] * (m[id + prev_folded_size] - m[id]) + m[id]
+                        } else {
+                            dot_product(
+                                prev_folding_factors.iter().copied(),
+                                (0..prev_folding_factors.len())
+                                    .map(|l| m[id + l * prev_folded_size]),
+                            )
+                        };
 
-                            unsafe {
-                                // folded[j][id] = res;
-                                let folded_ptr = folded_ef[j].as_ptr() as *mut EF;
-                                *folded_ptr.add(id) = res;
-                            }
-                            res
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
+                        unsafe {
+                            let folded_ptr = folded_f[j].as_ptr() as *mut EF;
+                            *folded_ptr.add(id) = res;
+                        }
+                        res
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let rows_ef = multilinears_ef
+            .iter()
+            .enumerate()
+            .map(|(j, m)| {
+                (0..1 << skips)
+                    .map(|k| {
+                        let id = i + k * compute_fold_size;
+                        let res: EF = if bi_folded {
+                            prev_folding_factors[1] * (m[id + prev_folded_size] - m[id]) + m[id]
+                        } else {
+                            dot_product(
+                                prev_folding_factors.iter().copied(),
+                                (0..prev_folding_factors.len())
+                                    .map(|l| m[id + l * prev_folded_size]),
+                            )
+                        };
 
-                    let mut res = computation.eval_extension(&point_f, &point_ef, extra_data);
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>()
+                        unsafe {
+                            let folded_ptr = folded_ef[j].as_ptr() as *mut EF;
+                            *folded_ptr.add(id) = res;
+                        }
+                        res
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        (0..n)
+            .map(|z_index| {
+                let folding_factors_z = &folding_factors[z_index];
+                let point_f = rows_f
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EF>()
+                    })
+                    .collect::<Vec<_>>();
+                let point_ef = rows_ef
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EF>()
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut res = computation.eval_extension(&point_f, &point_ef, extra_data);
+                if let Some(eq_mle_eval) = eq_mle_eval {
+                    res *= eq_mle_eval;
+                }
+                res
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let sum_zs_packed = if compute_fold_size < PARALLEL_THRESHOLD {
+        (0..compute_fold_size).fold(vec![EF::ZERO; n], |mut acc, i| {
+            let sums = compute_iteration(i);
+            for (j, sum) in sums.into_iter().enumerate() {
+                acc[j] += sum;
+            }
+            acc
         })
-        .reduce(
-            || vec![EF::ZERO; n],
-            |mut acc, sums| {
-                sums.into_iter().enumerate().for_each(|(i, sum)| {
-                    acc[i] += sum;
-                });
-                acc
-            },
-        );
+    } else {
+        (0..compute_fold_size)
+            .into_par_iter()
+            .map(compute_iteration)
+            .reduce(
+                || vec![EF::ZERO; n],
+                |mut acc, sums| {
+                    sums.into_iter().enumerate().for_each(|(i, sum)| {
+                        acc[i] += sum;
+                    });
+                    acc
+                },
+            )
+    };
+
     let mut evals = vec![];
     for (z_index, z) in zs.iter().enumerate() {
         let mut sum_z = sum_zs_packed[z_index];
@@ -765,72 +791,85 @@ fn sumcheck_compute_packed<
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let sum_zs_packed = (0..packed_fold_size)
-        .into_par_iter()
-        .map(|i| {
-            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-            let rows_f = multilinears_f
-                .iter()
-                .map(|m| {
-                    (0..1 << skips)
-                        .map(|j| m[i + j * packed_fold_size])
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            let rows_ef = multilinears_ef
-                .iter()
-                .map(|m| {
-                    (0..1 << skips)
-                        .map(|j| m[i + j * packed_fold_size])
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<WPF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point_f) };
-                        computation_packed.eval_packed_base(&point_f, &point_ef, extra_data)
-                    } else {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point_f) };
-                        computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data)
-                    };
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>()
+
+    let compute_iteration = |i: usize| -> Vec<EFPacking<EF>> {
+        let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+        let rows_f = multilinears_f
+            .iter()
+            .map(|m| {
+                (0..1 << skips)
+                    .map(|j| m[i + j * packed_fold_size])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let rows_ef = multilinears_ef
+            .iter()
+            .map(|m| {
+                (0..1 << skips)
+                    .map(|j| m[i + j * packed_fold_size])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        (0..n)
+            .map(|z_index| {
+                let folding_factors_z = &folding_factors[z_index];
+                let point_f = rows_f
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<WPF>()
+                    })
+                    .collect::<Vec<_>>();
+                let point_ef = rows_ef
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EFPacking<EF>>()
+                    })
+                    .collect::<Vec<_>>();
+                let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
+                    let point_f =
+                        unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point_f) };
+                    computation_packed.eval_packed_base(&point_f, &point_ef, extra_data)
+                } else {
+                    let point_f =
+                        unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point_f) };
+                    computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data)
+                };
+                if let Some(eq_mle_eval) = eq_mle_eval {
+                    res *= eq_mle_eval;
+                }
+                res
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let sum_zs_packed = if packed_fold_size < PARALLEL_THRESHOLD {
+        (0..packed_fold_size).fold(vec![EFPacking::<EF>::ZERO; n], |mut acc, i| {
+            let sums = compute_iteration(i);
+            for (j, sum) in sums.into_iter().enumerate() {
+                acc[j] += sum;
+            }
+            acc
         })
-        .reduce(
-            || vec![EFPacking::<EF>::ZERO; n],
-            |mut acc, sums| {
-                sums.into_iter().enumerate().for_each(|(i, sum)| {
-                    acc[i] += sum;
-                });
-                acc
-            },
-        );
+    } else {
+        (0..packed_fold_size)
+            .into_par_iter()
+            .map(compute_iteration)
+            .reduce(
+                || vec![EFPacking::<EF>::ZERO; n],
+                |mut acc, sums| {
+                    sums.into_iter().enumerate().for_each(|(i, sum)| {
+                        acc[i] += sum;
+                    });
+                    acc
+                },
+            )
+    };
 
     let mut evals = vec![];
     for (z_index, z) in zs.iter().enumerate() {
@@ -887,105 +926,116 @@ where
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let sum_zs_packed = (0..compute_fold_size)
-        .into_par_iter()
-        .map(|i| {
-            let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
-            let rows_f = multilinears_f
-                .iter()
-                .enumerate()
-                .map(|(j, m)| {
-                    (0..1 << skips)
-                        .map(|k| {
-                            let id = i + k * compute_fold_size;
-                            let res: EFPacking<EF> = if bi_folded {
-                                mul(m[id + prev_folded_size] - m[id], prev_folding_factors[1])
-                                    + m[id]
-                            } else {
-                                prev_folding_factors
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(l, &f)| mul(m[id + l * prev_folded_size], f))
-                                    .sum()
-                            };
-                            unsafe {
-                                // folded[j][id] = res;
-                                let folded_ptr = folded_f[j].as_ptr() as *mut EFPacking<EF>;
-                                *folded_ptr.add(id) = res;
-                            }
-                            res
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            let rows_ef = multilinears_ef
-                .iter()
-                .enumerate()
-                .map(|(j, m)| {
-                    (0..1 << skips)
-                        .map(|k| {
-                            let id = i + k * compute_fold_size;
-                            let res: EFPacking<EF> = if bi_folded {
-                                Add::<EFPacking<EF>>::add(
-                                    m[id + prev_folded_size] - m[id] * prev_folding_factors[1],
-                                    m[id],
-                                )
-                            } else {
-                                prev_folding_factors
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(l, &f)| m[id + l * prev_folded_size] * f)
-                                    .sum()
-                            };
-                            unsafe {
-                                // folded[j][id] = res;
-                                let folded_ptr = folded_ef[j].as_ptr() as *mut EFPacking<EF>;
-                                *folded_ptr.add(id) = res;
-                            }
-                            res
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-            (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let mut res =
-                        computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data);
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>()
+
+    let compute_iteration = |i: usize| -> Vec<EFPacking<EF>> {
+        let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
+        let rows_f = multilinears_f
+            .iter()
+            .enumerate()
+            .map(|(j, m)| {
+                (0..1 << skips)
+                    .map(|k| {
+                        let id = i + k * compute_fold_size;
+                        let res: EFPacking<EF> = if bi_folded {
+                            mul(m[id + prev_folded_size] - m[id], prev_folding_factors[1])
+                                + m[id]
+                        } else {
+                            prev_folding_factors
+                                .iter()
+                                .enumerate()
+                                .map(|(l, &f)| mul(m[id + l * prev_folded_size], f))
+                                .sum()
+                        };
+                        unsafe {
+                            let folded_ptr = folded_f[j].as_ptr() as *mut EFPacking<EF>;
+                            *folded_ptr.add(id) = res;
+                        }
+                        res
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let rows_ef = multilinears_ef
+            .iter()
+            .enumerate()
+            .map(|(j, m)| {
+                (0..1 << skips)
+                    .map(|k| {
+                        let id = i + k * compute_fold_size;
+                        let res: EFPacking<EF> = if bi_folded {
+                            Add::<EFPacking<EF>>::add(
+                                m[id + prev_folded_size] - m[id] * prev_folding_factors[1],
+                                m[id],
+                            )
+                        } else {
+                            prev_folding_factors
+                                .iter()
+                                .enumerate()
+                                .map(|(l, &f)| m[id + l * prev_folded_size] * f)
+                                .sum()
+                        };
+                        unsafe {
+                            let folded_ptr = folded_ef[j].as_ptr() as *mut EFPacking<EF>;
+                            *folded_ptr.add(id) = res;
+                        }
+                        res
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        (0..n)
+            .map(|z_index| {
+                let folding_factors_z = &folding_factors[z_index];
+                let point_f = rows_f
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EFPacking<EF>>()
+                    })
+                    .collect::<Vec<_>>();
+                let point_ef = rows_ef
+                    .iter()
+                    .map(|row| {
+                        row.iter()
+                            .zip(folding_factors_z.iter())
+                            .map(|(x, s)| *x * *s)
+                            .sum::<EFPacking<EF>>()
+                    })
+                    .collect::<Vec<_>>();
+                let mut res =
+                    computation_packed.eval_packed_extension(&point_f, &point_ef, extra_data);
+                if let Some(eq_mle_eval) = eq_mle_eval {
+                    res *= eq_mle_eval;
+                }
+                res
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let sum_zs_packed = if compute_fold_size < PARALLEL_THRESHOLD {
+        (0..compute_fold_size).fold(vec![EFPacking::<EF>::ZERO; n], |mut acc, i| {
+            let sums = compute_iteration(i);
+            for (j, sum) in sums.into_iter().enumerate() {
+                acc[j] += sum;
+            }
+            acc
         })
-        .reduce(
-            || vec![EFPacking::<EF>::ZERO; n],
-            |mut acc, sums| {
-                sums.into_iter().enumerate().for_each(|(i, sum)| {
-                    acc[i] += sum;
-                });
-                acc
-            },
-        );
+    } else {
+        (0..compute_fold_size)
+            .into_par_iter()
+            .map(compute_iteration)
+            .reduce(
+                || vec![EFPacking::<EF>::ZERO; n],
+                |mut acc, sums| {
+                    sums.into_iter().enumerate().for_each(|(i, sum)| {
+                        acc[i] += sum;
+                    });
+                    acc
+                },
+            )
+    };
 
     let mut evals = vec![];
     for (z_index, z) in zs.iter().enumerate() {

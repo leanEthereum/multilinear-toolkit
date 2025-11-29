@@ -12,22 +12,45 @@ use rayon::{
     slice::{Iter, IterMut},
 };
 
+pub const PARALLEL_THRESHOLD: usize = 1 << 14;
+
 pub fn pack_extension<EF: ExtensionField<PF<EF>>>(slice: &[EF]) -> Vec<EFPacking<EF>> {
-    slice
-        .par_chunks_exact(packing_width::<EF>())
-        .map(EFPacking::<EF>::from_ext_slice)
-        .collect::<Vec<_>>()
+    let width = packing_width::<EF>();
+    if slice.len() < PARALLEL_THRESHOLD {
+        slice
+            .chunks_exact(width)
+            .map(EFPacking::<EF>::from_ext_slice)
+            .collect::<Vec<_>>()
+    } else {
+        slice
+            .par_chunks_exact(width)
+            .map(EFPacking::<EF>::from_ext_slice)
+            .collect::<Vec<_>>()
+    }
 }
 
 pub fn unpack_extension<EF: ExtensionField<PF<EF>>>(vec: &[EFPacking<EF>]) -> Vec<EF> {
-    vec.par_iter()
-        .flat_map(|x| {
-            let packed_coeffs = x.as_basis_coefficients_slice();
-            (0..packing_width::<EF>())
-                .map(|i| EF::from_basis_coefficients_fn(|j| packed_coeffs[j].as_slice()[i]))
-                .collect::<Vec<_>>()
-        })
-        .collect()
+    let width = packing_width::<EF>();
+    let total_elements = vec.len() * width;
+    if total_elements < PARALLEL_THRESHOLD {
+        vec.iter()
+            .flat_map(|x| {
+                let packed_coeffs = x.as_basis_coefficients_slice();
+                (0..width)
+                    .map(|i| EF::from_basis_coefficients_fn(|j| packed_coeffs[j].as_slice()[i]))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    } else {
+        vec.par_iter()
+            .flat_map(|x| {
+                let packed_coeffs = x.as_basis_coefficients_slice();
+                (0..width)
+                    .map(|i| EF::from_basis_coefficients_fn(|j| packed_coeffs[j].as_slice()[i]))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
 }
 
 pub const fn packing_log_width<EF: Field>() -> usize {
@@ -48,10 +71,18 @@ pub fn batch_fold_multilinears<
     scalars: &[EF],
     mul_if_of: F,
 ) -> Vec<Vec<OF>> {
-    polys
-        .par_iter()
-        .map(|poly| fold_multilinear(poly, scalars, &mul_if_of))
-        .collect()
+    let total_size: usize = polys.iter().map(|p| p.len()).sum();
+    if total_size < PARALLEL_THRESHOLD {
+        polys
+            .iter()
+            .map(|poly| fold_multilinear(poly, scalars, &mul_if_of))
+            .collect()
+    } else {
+        polys
+            .par_iter()
+            .map(|poly| fold_multilinear(poly, scalars, &mul_if_of))
+            .collect()
+    }
 }
 
 pub fn fold_multilinear<
@@ -67,24 +98,45 @@ pub fn fold_multilinear<
     assert!(scalars.len().is_power_of_two() && scalars.len() <= m.len());
     let new_size = m.len() / scalars.len();
     let mut res = unsafe { uninitialized_vec(new_size) };
-    if scalars.len() == 2 {
-        assert_eq!(scalars[0], EF::ONE - scalars[1]);
-        let alpha = scalars[1];
-        (0..new_size)
-            .into_par_iter()
-            .map(|i| mul_if_of(m[i + new_size] - m[i], alpha) + m[i])
-            .collect_into_vec(&mut res);
-    } else {
-        (0..new_size)
-            .into_par_iter()
-            .map(|i| {
-                scalars
+
+    if new_size < PARALLEL_THRESHOLD {
+        if scalars.len() == 2 {
+            assert_eq!(scalars[0], EF::ONE - scalars[1]);
+            let alpha = scalars[1];
+            for i in 0..new_size {
+                res[i] = mul_if_of(m[i + new_size] - m[i], alpha) + m[i];
+            }
+        } else {
+            for i in 0..new_size {
+                res[i] = scalars
                     .iter()
                     .enumerate()
                     .map(|(j, s)| mul_if_of(m[i + j * new_size], *s))
-                    .sum()
-            })
-            .collect_into_vec(&mut res);
+                    .sum();
+            }
+        }
+    } else {
+        if scalars.len() == 2 {
+            assert_eq!(scalars[0], EF::ONE - scalars[1]);
+            let alpha = scalars[1];
+            (0..new_size)
+                .into_par_iter()
+                .with_min_len(PARALLEL_THRESHOLD)
+                .map(|i| mul_if_of(m[i + new_size] - m[i], alpha) + m[i])
+                .collect_into_vec(&mut res);
+        } else {
+            (0..new_size)
+                .into_par_iter()
+                .with_min_len(PARALLEL_THRESHOLD)
+                .map(|i| {
+                    scalars
+                        .iter()
+                        .enumerate()
+                        .map(|(j, s)| mul_if_of(m[i + j * new_size], *s))
+                        .sum()
+                })
+                .collect_into_vec(&mut res);
+        }
     }
     res
 }
@@ -103,7 +155,7 @@ pub unsafe fn uninitialized_vec<A>(len: usize) -> Vec<A> {
 }
 
 pub fn parallel_clone<A: Clone + Send + Sync>(src: &[A], dst: &mut [A]) {
-    if src.len() < 1 << 15 {
+    if src.len() < PARALLEL_THRESHOLD {
         // sequential copy
         dst.clone_from_slice(src);
     } else {
@@ -132,11 +184,18 @@ where
     EFPacking<EF>: Algebra<R>,
 {
     assert_eq!(a.len(), b.len());
-    let res_packed: EFPacking<EF> = a
-        .par_iter()
-        .zip(b.par_iter())
-        .map(|(&x, &y)| x * y)
-        .sum::<EFPacking<EF>>();
+    let total_elements = a.len() * packing_width::<EF>();
+    let res_packed: EFPacking<EF> = if total_elements < PARALLEL_THRESHOLD {
+        a.iter()
+            .zip(b.iter())
+            .map(|(&x, &y)| x * y)
+            .sum::<EFPacking<EF>>()
+    } else {
+        a.par_iter()
+            .zip(b.par_iter())
+            .map(|(&x, &y)| x * y)
+            .sum::<EFPacking<EF>>()
+    };
     unpack_extension(&[res_packed]).into_iter().sum()
 }
 
@@ -198,6 +257,8 @@ pub fn split_at_mut_many<'a, A>(slice: &'a mut [A], indices: &[usize]) -> Vec<&'
     result
 }
 
+// Parallel
+
 pub fn par_iter_split_4<'a, A: Sync + Send>(
     u: &'a [A],
 ) -> Zip<Zip<Iter<'a, A>, Iter<'a, A>>, Zip<Iter<'a, A>, Iter<'a, A>>> {
@@ -255,6 +316,43 @@ pub fn par_zip_fold_2<'a, 'b, A: Sync + Send, B: Sync + Send>(
     assert!(n % 4 == 0);
     assert_eq!(folded.len(), n / 2);
     par_iter_split_4(u).zip(par_iter_mut_split_2(folded))
+}
+
+// Sequential
+
+pub fn iter_split_2<'a, A>(u: &'a [A]) -> impl Iterator<Item = (&'a A, &'a A)> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at(n / 2);
+    u_left.iter().zip(u_right.iter())
+}
+
+pub fn iter_split_4<'a, A>(u: &'a [A]) -> impl Iterator<Item = ((&'a A, &'a A), (&'a A, &'a A))> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    let (u_left, u_right) = u.split_at(n / 2);
+    let (u_ll, u_lr) = u_left.split_at(n / 4);
+    let (u_rl, u_rr) = u_right.split_at(n / 4);
+    u_ll.iter()
+        .zip(u_lr.iter())
+        .zip(u_rl.iter().zip(u_rr.iter()))
+}
+
+pub fn iter_mut_split_2<'a, A>(u: &'a mut [A]) -> impl Iterator<Item = (&'a mut A, &'a mut A)> {
+    let n = u.len();
+    assert!(n % 2 == 0);
+    let (u_left, u_right) = u.split_at_mut(n / 2);
+    u_left.iter_mut().zip(u_right.iter_mut())
+}
+
+pub fn zip_fold_2<'a, 'b, A, B>(
+    u: &'a [A],
+    folded: &'b mut [B],
+) -> impl Iterator<Item = (((&'a A, &'a A), (&'a A, &'a A)), (&'b mut B, &'b mut B))> {
+    let n = u.len();
+    assert!(n % 4 == 0);
+    assert_eq!(folded.len(), n / 2);
+    iter_split_4(u).zip(iter_mut_split_2(folded))
 }
 
 pub fn transmute_array<A, const N: usize, const M: usize>(input: [A; N]) -> [A; M] {

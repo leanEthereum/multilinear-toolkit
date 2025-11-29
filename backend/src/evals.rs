@@ -68,7 +68,11 @@ impl<F: Field, EL: Borrow<[F]>> EvaluationsList<F> for EL {
 /// Multiply the polynomial by a scalar factor.
 #[must_use]
 pub fn scale_poly<F: Field, EF: ExtensionField<F>>(poly: &[F], factor: EF) -> Vec<EF> {
-    poly.par_iter().map(|&e| factor * e).collect()
+    if poly.len() < PARALLEL_THRESHOLD {
+        poly.iter().map(|&e| factor * e).collect()
+    } else {
+        poly.par_iter().map(|&e| factor * e).collect()
+    }
 }
 
 fn eval_multilinear<F, EF, const PARALLEL: bool>(evals: &[F], point: &[EF]) -> EF

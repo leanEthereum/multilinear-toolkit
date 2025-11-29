@@ -81,13 +81,23 @@ pub fn compute_sparse_eval_eq<F: ExtensionField<PF<F>>>(eval: &[F], out: &mut [F
             &mut buff,
             scalar,
         );
-        out[ends_big_endian..]
-            .par_iter_mut()
-            .step_by(1 << boolean_ends.len())
-            .zip(buff.into_par_iter())
-            .for_each(|(o, v)| {
-                *o += v;
-            });
+        if buff.len() < PARALLEL_THRESHOLD {
+            out[ends_big_endian..]
+                .iter_mut()
+                .step_by(1 << boolean_ends.len())
+                .zip(buff.into_iter())
+                .for_each(|(o, v)| {
+                    *o += v;
+                });
+        } else {
+            out[ends_big_endian..]
+                .par_iter_mut()
+                .step_by(1 << boolean_ends.len())
+                .zip(buff.into_par_iter())
+                .for_each(|(o, v)| {
+                    *o += v;
+                });
+        }
     }
 }
 
