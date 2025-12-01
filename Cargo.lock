@@ -292,7 +292,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#813f04da547f043ad57d44dee81101b806baa4f3"
+source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles#4cacfe43d82ad3dbda11a69363ff961b3cd0964f"
 dependencies = [
  "serde",
 ]
@@ -434,6 +434,7 @@ dependencies = [
  "backend",
  "constraints-folder",
  "fiat-shamir",
+ "itertools",
  "p3-air",
  "p3-field",
  "p3-koala-bear",

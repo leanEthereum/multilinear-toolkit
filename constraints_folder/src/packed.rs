@@ -2,20 +2,19 @@ use fiat_shamir::*;
 use p3_air::AirBuilder;
 use p3_field::ExtensionField;
 
-use crate::AlphaPowers;
-
 #[derive(Debug)]
-pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> {
+pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>, ExtraData> {
     pub up_f: &'a [PFPacking<EF>],
     pub up_ef: &'a [EFPacking<EF>],
     pub down_f: &'a [PFPacking<EF>],
     pub down_ef: &'a [EFPacking<EF>],
     pub extra_data: &'a ExtraData,
+    pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
 }
 
-impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for ConstraintFolderPackedBase<'a, EF, ExtraData> {
+impl<'a, EF: ExtensionField<PF<EF>>, ExtraData> AirBuilder for ConstraintFolderPackedBase<'a, EF, ExtraData> {
     type F = PFPacking<EF>;
     type EF = EFPacking<EF>;
 
@@ -41,14 +40,14 @@ impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for 
 
     #[inline]
     fn assert_zero(&mut self, x: Self::F) {
-        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
+        let alpha_power = self.alpha_powers[self.constraint_index];
         self.accumulator += EFPacking::<EF>::from(alpha_power) * x;
         self.constraint_index += 1;
     }
 
     #[inline]
     fn assert_zero_ef(&mut self, x: Self::EF) {
-        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
+        let alpha_power = self.alpha_powers[self.constraint_index];
         self.accumulator += x * alpha_power;
         self.constraint_index += 1;
     }
@@ -60,17 +59,18 @@ impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for 
 }
 
 #[derive(Debug)]
-pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> {
+pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>, ExtraData> {
     pub up_f: &'a [EFPacking<EF>],
     pub up_ef: &'a [EFPacking<EF>],
     pub down_f: &'a [EFPacking<EF>],
     pub down_ef: &'a [EFPacking<EF>],
     pub extra_data: &'a ExtraData,
+    pub alpha_powers: &'a [EF],
     pub accumulator: EFPacking<EF>,
     pub constraint_index: usize,
 }
 
-impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for ConstraintFolderPackedExtension<'a, EF, ExtraData> {
+impl<'a, EF: ExtensionField<PF<EF>>, ExtraData> AirBuilder for ConstraintFolderPackedExtension<'a, EF, ExtraData> {
     type F = EFPacking<EF>;
     type EF = EFPacking<EF>;
 
@@ -96,14 +96,14 @@ impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for 
 
     #[inline]
     fn assert_zero(&mut self, x: Self::F) {
-        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
+        let alpha_power = self.alpha_powers[self.constraint_index];
         self.accumulator += x * alpha_power;
         self.constraint_index += 1;
     }
 
     #[inline]
     fn assert_zero_ef(&mut self, x: Self::EF) {
-        let alpha_power = self.extra_data.alpha_powers()[self.constraint_index];
+        let alpha_power = self.alpha_powers[self.constraint_index];
         self.accumulator += x * alpha_power;
         self.constraint_index += 1;
     }

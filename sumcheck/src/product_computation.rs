@@ -19,17 +19,32 @@ pub type CubeComputation = MultiProductComputation<3>;
 impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for MultiProductComputation<N>
 {
-    type ExtraData = Vec<EF>;
+    type ExtraData = ();
 
-    fn degree(&self) -> usize {
-        N
+    fn degrees(&self) -> Vec<usize> {
+        vec![1]
     }
+
     #[inline(always)]
-    fn eval_base(&self, _point: &[PF<EF>], _: &[EF], _: &Self::ExtraData) -> EF {
+    fn eval_base(
+        &self,
+        _point: &[PF<EF>],
+        _: &[EF],
+        _: &Self::ExtraData,
+        _: &[EF],
+        _: usize,
+    ) -> EF {
         unreachable!()
     }
     #[inline(always)]
-    fn eval_extension(&self, point: &[EF], _: &[EF], _: &Self::ExtraData) -> EF {
+    fn eval_extension(
+        &self,
+        point: &[EF],
+        _: &[EF],
+        _: &Self::ExtraData,
+        _: &[EF],
+        _: usize,
+    ) -> EF {
         mul_many_const::<N, _>(point)
     }
     #[inline(always)]
@@ -38,6 +53,8 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
         point: &[PFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
+        _: &[EF],
+        _: usize,
     ) -> EFPacking<EF> {
         // TODO this is very inneficient
         EFPacking::<EF>::from(mul_many_const::<N, _>(point))
@@ -48,6 +65,8 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
         point: &[EFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
+        _: &[EF],
+        _: usize,
     ) -> EFPacking<EF> {
         mul_many_const::<N, _>(point)
     }
@@ -144,11 +163,12 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         None,
         Some(vec![EF::ONE - r2, r2]),
         &ProductComputation {},
-        &vec![],
+        &(),
+        &[],
         None,
-        false,
+        vec![false],
         prover_state,
-        sum,
+        vec![sum],
         None,
         n_rounds - 2,
         true,

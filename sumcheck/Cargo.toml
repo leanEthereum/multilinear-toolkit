@@ -9,7 +9,7 @@ p3-air.workspace = true
 p3-util.workspace = true
 backend.workspace = true
 constraints-folder.workspace = true
-
+itertools.workspace = true
 fiat-shamir.workspace = true
 
 rayon.workspace = true

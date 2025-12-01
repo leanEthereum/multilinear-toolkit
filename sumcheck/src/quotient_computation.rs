@@ -20,20 +20,34 @@ pub struct GKRQuotientComputation<const N: usize>;
 impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     for GKRQuotientComputation<N>
 {
-    type ExtraData = Vec<EF>;
+    type ExtraData = ();
 
-    fn degree(&self) -> usize {
-        2
+    fn degrees(&self) -> Vec<usize> {
+        vec![2]
     }
 
     #[inline(always)]
-    fn eval_base(&self, point: &[PF<EF>], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
+    fn eval_base(
+        &self,
+        point: &[PF<EF>],
+        _: &[EF],
+        _: &Self::ExtraData,
+        alpha_powers: &[EF],
+        _: usize,
+    ) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_extension(&self, point: &[EF], _: &[EF], alpha_powers: &Self::ExtraData) -> EF {
+    fn eval_extension(
+        &self,
+        point: &[EF],
+        _: &[EF],
+        _: &Self::ExtraData,
+        alpha_powers: &[EF],
+        _: usize,
+    ) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
@@ -43,7 +57,9 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
         &self,
         point: &[PFPacking<EF>],
         _: &[EFPacking<EF>],
-        alpha_powers: &Self::ExtraData,
+        _: &Self::ExtraData,
+        alpha_powers: &[EF],
+        _: usize,
     ) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alpha_powers[i]));
@@ -55,7 +71,9 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
         &self,
         point: &[EFPacking<EF>],
         _: &[EFPacking<EF>],
-        alpha_powers: &Self::ExtraData,
+        _: &Self::ExtraData,
+        alpha_powers: &[EF],
+        _: usize,
     ) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&inner[1..], &alpha_powers[1..]) + inner[0]

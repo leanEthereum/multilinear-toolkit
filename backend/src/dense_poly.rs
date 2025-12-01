@@ -1,6 +1,5 @@
 use std::{
-    collections::HashSet,
-    ops::{Add, AddAssign, Mul, MulAssign},
+    collections::HashSet, iter::Sum, ops::{Add, AddAssign, Mul, MulAssign}
 };
 
 use p3_field::{ExtensionField, Field};
@@ -174,3 +173,13 @@ impl<F: Field> MulAssign<&Self> for DensePolynomial<F> {
         *self = &*self * other;
     }
 }
+
+impl<F: Field> Sum for DensePolynomial<F> {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let mut res = DensePolynomial::default();
+        for pol in iter {
+            res += &pol;
+        }
+        res
+    }
+} 

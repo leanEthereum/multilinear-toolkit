@@ -1,6 +1,6 @@
 use backend::*;
-use constraints_folder::AlphaPowers;
 use fiat_shamir::*;
+use itertools::Itertools;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
 use p3_util::log2_strict_usize;
@@ -14,6 +14,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     multilinears_ef: Option<M>,
     computation: &SC,
     extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
@@ -22,42 +23,42 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<EF> + 'static,
-    SC::ExtraData: AlphaPowers<EF>,
+    SC: SumcheckComputation<EF>,
 {
-    sumcheck_fold_and_prove(
+    sumcheck_prove_custom(
         skip,
         multilinears_f,
         multilinears_ef,
         None,
         computation,
         extra_data,
+        alpha_powers,
         eq_factor,
-        is_zerofier,
+        vec![is_zerofier],
         prover_state,
-        sum,
+        vec![sum],
         store_intermediate_foldings,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
+pub fn sumcheck_prove_custom<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     skip: usize, // skips == 1: classic sumcheck. skips >= 2: sumcheck with univariate skips (eprint 2024/108)
     multilinears_f: M,
     multilinears_ef: Option<M>,
     prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
     extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
-    is_zerofier: bool,
+    is_zerofier: Vec<bool>,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    sum: EF,
+    sums: Vec<EF>,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<EF> + 'static,
-    SC::ExtraData: AlphaPowers<EF>,
+    SC: SumcheckComputation<EF>,
 {
     let multilinears_f: MleGroup<'a, EF> = multilinears_f.into();
     let multilinears_ef: MleGroup<'a, EF> = match multilinears_ef {
@@ -75,10 +76,11 @@ where
         prev_folding_factors,
         computation,
         extra_data,
+        alpha_powers,
         eq_factor,
         is_zerofier,
         prover_state,
-        sum,
+        sums,
         None,
         n_rounds,
         store_intermediate_foldings,
@@ -111,10 +113,11 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     mut prev_folding_factors: Option<Vec<EF>>,
     computation: &SC,
     extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
     mut eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
-    mut is_zerofier: bool,
+    mut all_zerofiers: Vec<bool>,
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    mut sum: EF,
+    mut sums: Vec<EF>,
     mut missing_mul_factors: Option<EF>,
     n_rounds: usize,
     store_intermediate_foldings: bool,
@@ -126,8 +129,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
 )
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<EF> + 'static,
-    SC::ExtraData: AlphaPowers<EF>,
+    SC: SumcheckComputation<EF>,
 {
     let mut multilinears_f: MleGroup<'a, EF> = multilinears_f.into();
     let mut multilinears_ef: MleGroup<'a, EF> = match multilinears_ef {
@@ -184,9 +186,10 @@ where
             computation,
             &eq_factor,
             extra_data,
-            is_zerofier,
+            alpha_powers,
+            &all_zerofiers,
             prover_state,
-            sum,
+            &sums,
             missing_mul_factors,
         );
         let challenge = prover_state.sample();
@@ -198,14 +201,14 @@ where
             skip,
             &mut n_vars,
             &mut eq_factor,
-            &mut sum,
+            &mut sums,
             &mut missing_mul_factors,
             challenge,
             &ps,
             store_intermediate_foldings,
         );
         skip = 1;
-        is_zerofier = false;
+        all_zerofiers = vec![false; sums.len()];
     }
 
     if let Some(prev_folding_factors) = prev_folding_factors {
@@ -217,7 +220,7 @@ where
         MultilinearPoint(challenges),
         multilinears_f.as_owned().unwrap(),
         multilinears_ef.as_owned().unwrap(),
-        sum,
+        sums.into_iter().sum(),
     )
 }
 
@@ -230,40 +233,55 @@ fn compute_and_send_polynomial<'a, EF, SC>(
     computation: &SC,
     eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     extra_data: &SC::ExtraData,
-    is_zerofier: bool,
+    alpha_powers: &[EF],
+    all_zerofiers: &[bool],
     prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
-    sum: EF,
+    sums: &[EF],
     missing_mul_factor: Option<EF>,
-) -> DensePolynomial<EF>
+) -> Vec<DensePolynomial<EF>>
 where
     EF: ExtensionField<PF<EF>>,
-    SC: SumcheckComputation<EF> + 'static,
-    SC::ExtraData: AlphaPowers<EF>,
+    SC: SumcheckComputation<EF>,
 {
+    assert_eq!(all_zerofiers.len(), sums.len());
     let selectors = univariate_selectors::<PF<EF>>(skips);
 
-    let mut p_evals = Vec::<(PF<EF>, EF)>::new();
-    let start = if is_zerofier {
-        p_evals.extend((0..1 << skips).map(|i| (PF::<EF>::from_usize(i), EF::ZERO)));
-        1 << skips
-    } else {
-        0
-    };
+    let mut all_p_evals = Vec::<Vec<(PF<EF>, EF)>>::new();
 
-    let computation_degree = computation.degree();
-    let zs = (start..=computation_degree * ((1 << skips) - 1))
-        .filter(|&i| i != (1 << skips) - 1)
-        .collect::<Vec<_>>();
+    let mut all_zs = Vec::new();
+    for (degree, &is_zerofier) in computation.degrees().iter().zip(all_zerofiers) {
+        let start = if is_zerofier {
+            all_p_evals.push(
+                (0..1 << skips)
+                    .map(|i| (PF::<EF>::from_usize(i), EF::ZERO))
+                    .collect(),
+            );
+            1 << skips
+        } else {
+            all_p_evals.push(vec![]);
+            0
+        };
 
-    let compute_folding_factors = zs
+        all_zs.push(
+            (start..=degree * ((1 << skips) - 1))
+                .filter(|&i| i != (1 << skips) - 1)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    let all_compute_folding_factors = all_zs
         .iter()
-        .map(|&z| {
-            selectors
-                .iter()
-                .map(|s| s.evaluate(PF::<EF>::from_usize(z)))
-                .collect::<Vec<_>>()
+        .map(|zs| {
+            zs.iter()
+                .map(|&z| {
+                    selectors
+                        .iter()
+                        .map(|s| s.evaluate(PF::<EF>::from_usize(z)))
+                        .collect::<Vec<_>>()
+                })
+                .collect()
         })
-        .collect::<Vec<Vec<PF<EF>>>>();
+        .collect::<Vec<Vec<Vec<PF<EF>>>>>();
 
     let sc_params = SumcheckComputeParams {
         skips,
@@ -271,13 +289,14 @@ where
         first_eq_factor: eq_factor
             .as_ref()
             .map(|(first_eq_factor, _)| first_eq_factor[0]),
-        folding_factors: &compute_folding_factors,
+        folding_factors: &all_compute_folding_factors,
         computation,
         extra_data,
+        alpha_powers,
         missing_mul_factor,
-        sum,
+        sums: &sums,
     };
-    p_evals.extend(match &prev_folding_factors {
+    let all_computed_evals = match &prev_folding_factors {
         Some(prev_folding_factors) => {
             let (computed_p_evals, folded_multilinears_f, folded_multilinears_ef) =
                 fold_and_sumcheck_compute(
@@ -285,7 +304,7 @@ where
                     &multilinears_f.by_ref(),
                     &multilinears_ef.by_ref(),
                     sc_params,
-                    &zs,
+                    &all_zs,
                 );
             *multilinears_f = folded_multilinears_f.into();
             *multilinears_ef = folded_multilinears_ef.into();
@@ -295,50 +314,63 @@ where
             &multilinears_f.by_ref(),
             &multilinears_ef.by_ref(),
             sc_params,
-            &zs,
+            &all_zs,
         ),
-    });
+    };
 
-    if !is_zerofier {
-        let missing_sum_z = if let Some((eq_factor, _)) = eq_factor {
-            (sum - (0..(1 << skips) - 1)
-                .map(|i| p_evals[i].1 * selectors[i].evaluate(eq_factor[0]))
-                .sum::<EF>())
-                / selectors[(1 << skips) - 1].evaluate(eq_factor[0])
-        } else {
-            sum - p_evals[..(1 << skips) - 1]
-                .iter()
-                .map(|(_, s)| *s)
-                .sum::<EF>()
-        };
-        p_evals.push((PF::<EF>::from_usize((1 << skips) - 1), missing_sum_z));
+    let mut all_pols = vec![];
+
+    for (p_evals, (computed_evals, (is_zerofier, &sum))) in all_p_evals.iter_mut().zip(
+        all_computed_evals
+            .iter()
+            .zip(all_zerofiers.iter().zip(sums)),
+    ) {
+        p_evals.extend(computed_evals);
+
+        if !is_zerofier {
+            let missing_sum_z = if let Some((eq_factor, _)) = eq_factor {
+                (sum - (0..(1 << skips) - 1)
+                    .map(|i| p_evals[i].1 * selectors[i].evaluate(eq_factor[0]))
+                    .sum::<EF>())
+                    / selectors[(1 << skips) - 1].evaluate(eq_factor[0])
+            } else {
+                sum - p_evals[..(1 << skips) - 1]
+                    .iter()
+                    .map(|(_, s)| *s)
+                    .sum::<EF>()
+            };
+            p_evals.push((PF::<EF>::from_usize((1 << skips) - 1), missing_sum_z));
+        }
+
+        let mut p = DensePolynomial::lagrange_interpolation(&p_evals).unwrap();
+
+        if let Some((eq_factor, _)) = &eq_factor {
+            // https://eprint.iacr.org/2024/108.pdf Section 3.2
+            // We do not take advantage of this trick to send less data, but we could do so in the future (TODO)
+            p *= &DensePolynomial::lagrange_interpolation(
+                &(0..1 << skips)
+                    .into_iter()
+                    .map(|i| (PF::<EF>::from_usize(i), selectors[i].evaluate(eq_factor[0])))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+        }
+
+        // sanity check
+        assert_eq!(
+            (0..1 << skips)
+                .map(|i| p.evaluate(EF::from_usize(i)))
+                .sum::<EF>(),
+            sum
+        );
+
+        all_pols.push(p);
     }
 
-    let mut p = DensePolynomial::lagrange_interpolation(&p_evals).unwrap();
+    prover_state
+        .add_extension_scalars(&all_pols.iter().cloned().sum::<DensePolynomial<_>>().coeffs);
 
-    if let Some((eq_factor, _)) = &eq_factor {
-        // https://eprint.iacr.org/2024/108.pdf Section 3.2
-        // We do not take advantage of this trick to send less data, but we could do so in the future (TODO)
-        p *= &DensePolynomial::lagrange_interpolation(
-            &(0..1 << skips)
-                .into_iter()
-                .map(|i| (PF::<EF>::from_usize(i), selectors[i].evaluate(eq_factor[0])))
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
-    }
-
-    // sanity check
-    assert_eq!(
-        (0..1 << skips)
-            .map(|i| p.evaluate(EF::from_usize(i)))
-            .sum::<EF>(),
-        sum
-    );
-
-    prover_state.add_extension_scalars(&p.coeffs);
-
-    p
+    all_pols
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -348,13 +380,16 @@ fn on_challenge_received<'a, EF: ExtensionField<PF<EF>>>(
     skips: usize, // the first round will fold 2^skips (instead of 2 in the basic sumcheck)
     n_vars: &mut usize,
     eq_factor: &mut Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
-    sum: &mut EF,
+    sums: &mut [EF],
     missing_mul_factor: &mut Option<EF>,
     challenge: EF,
-    p: &DensePolynomial<EF>,
+    all_pols: &[DensePolynomial<EF>],
     store_intermediate_foldings: bool,
 ) -> Option<Vec<EF>> {
-    *sum = p.evaluate(challenge);
+    sums.iter_mut().zip_eq(all_pols).for_each(|(sum, p)| {
+        *sum = p.evaluate(challenge);
+    });
+
     *n_vars -= skips;
 
     let selectors = univariate_selectors::<PF<EF>>(skips);
