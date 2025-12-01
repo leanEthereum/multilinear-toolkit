@@ -11,7 +11,7 @@ backend.workspace = true
 constraints-folder.workspace = true
 itertools.workspace = true
 fiat-shamir.workspace = true
-
+unroll_macro.workspace = true
 rayon.workspace = true
 
 [dev-dependencies]

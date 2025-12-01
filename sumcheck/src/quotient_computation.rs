@@ -27,39 +27,36 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     }
 
     #[inline(always)]
-    fn eval_base(
+    fn eval_base<const STEP: usize>(
         &self,
         point: &[PF<EF>],
         _: &[EF],
         _: &Self::ExtraData,
         alpha_powers: &[EF],
-        _: usize,
     ) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_extension(
+    fn eval_extension<const STEP: usize>(
         &self,
         point: &[EF],
         _: &[EF],
         _: &Self::ExtraData,
         alpha_powers: &[EF],
-        _: usize,
     ) -> EF {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&alpha_powers[1..], &inner[1..]) + inner[0]
     }
 
     #[inline(always)]
-    fn eval_packed_base(
+    fn eval_packed_base<const STEP: usize>(
         &self,
         point: &[PFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
         alpha_powers: &[EF],
-        _: usize,
     ) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         let alphas_packed: [_; N] = array::from_fn(|i| EFPacking::<EF>::from(alpha_powers[i]));
@@ -67,13 +64,12 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     }
 
     #[inline(always)]
-    fn eval_packed_extension(
+    fn eval_packed_extension<const STEP: usize>(
         &self,
         point: &[EFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
         alpha_powers: &[EF],
-        _: usize,
     ) -> EFPacking<EF> {
         let inner = sum_fractions_const_2_by_2::<N, _>(&point[..N], &point[N..]);
         my_dot_product(&inner[1..], &alpha_powers[1..]) + inner[0]

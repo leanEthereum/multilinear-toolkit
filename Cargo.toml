@@ -9,7 +9,7 @@ edition = "2024"
 
 [workspace]
 resolver = "2"
-members = ["backend", "constraints_folder", "sumcheck"]
+members = ["backend", "constraints_folder", "sumcheck", "unroll_macro"]
 
 [workspace.dependencies]
 fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git", branch = "modular-precompiles" }
@@ -28,7 +28,7 @@ tracing = "*"
 backend = { path = "backend" }
 constraints-folder = { path = "constraints_folder" }
 sumcheck = { path = "sumcheck" }
-
+unroll_macro = { path = "unroll_macro" }
 
 [dependencies]
 backend.workspace = true
@@ -38,6 +38,7 @@ p3-field.workspace = true
 p3-util.workspace = true
 fiat-shamir.workspace = true
 rayon.workspace = true
+unroll_macro.workspace = true
 
 
 [patch."https://github.com/TomWambsgans/Plonky3.git"]

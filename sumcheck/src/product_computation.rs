@@ -26,47 +26,43 @@ impl<const N: usize, EF: ExtensionField<PF<EF>>> SumcheckComputation<EF>
     }
 
     #[inline(always)]
-    fn eval_base(
+    fn eval_base<const STEP: usize>(
         &self,
         _point: &[PF<EF>],
         _: &[EF],
         _: &Self::ExtraData,
         _: &[EF],
-        _: usize,
     ) -> EF {
         unreachable!()
     }
     #[inline(always)]
-    fn eval_extension(
+    fn eval_extension<const STEP: usize>(
         &self,
         point: &[EF],
         _: &[EF],
         _: &Self::ExtraData,
         _: &[EF],
-        _: usize,
     ) -> EF {
         mul_many_const::<N, _>(point)
     }
     #[inline(always)]
-    fn eval_packed_base(
+    fn eval_packed_base<const STEP: usize>(
         &self,
         point: &[PFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
         _: &[EF],
-        _: usize,
     ) -> EFPacking<EF> {
         // TODO this is very inneficient
         EFPacking::<EF>::from(mul_many_const::<N, _>(point))
     }
     #[inline(always)]
-    fn eval_packed_extension(
+    fn eval_packed_extension<const STEP: usize>(
         &self,
         point: &[EFPacking<EF>],
         _: &[EFPacking<EF>],
         _: &Self::ExtraData,
         _: &[EF],
-        _: usize,
     ) -> EFPacking<EF> {
         mul_many_const::<N, _>(point)
     }

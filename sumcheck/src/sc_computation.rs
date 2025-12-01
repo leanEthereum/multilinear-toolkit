@@ -12,9 +12,11 @@ use rayon::prelude::*;
 use std::any::TypeId;
 use std::ops::Add;
 use std::ops::Mul;
+use unroll_macro::unroll_match;
 
 pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
     type ExtraData: Send + Sync + 'static;
+    const N_STEPS: usize = 1;
 
     fn degrees(&self) -> Vec<usize>; // should be in increasing order
 
@@ -22,47 +24,38 @@ pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
         self.degrees().into_iter().max().unwrap()
     }
 
-    fn eval_base(
+    fn eval_base<const STEP: usize>(
         &self,
         point_f: &[PF<EF>],
         point_ef: &[EF],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EF;
-    fn eval_extension(
+    fn eval_extension<const STEP: usize>(
         &self,
         point_f: &[EF],
         point_ef: &[EF],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EF;
-    fn eval_packed_base(
+    fn eval_packed_base<const STEP: usize>(
         &self,
         point_f: &[PFPacking<EF>],
         point_ef: &[EFPacking<EF>],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EFPacking<EF>;
-    fn eval_packed_extension(
+    fn eval_packed_extension<const STEP: usize>(
         &self,
         point_f: &[EFPacking<EF>],
         point_ef: &[EFPacking<EF>],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EFPacking<EF>;
 
     #[inline(always)]
     fn n_steps(&self) -> usize {
         self.degrees().len()
-    }
-
-    #[inline(always)]
-    fn steps(&self) -> core::ops::Range<usize> {
-        0..self.n_steps()
     }
 
     fn eval_extension_everywhere(
@@ -72,10 +65,13 @@ pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
     ) -> EF {
-        self.steps()
-            .map(|step| self.eval_extension(point_f, point_ef, extra_data, alpha_powers, step
-            ))
-            .sum()
+        let mut res = EF::ZERO;
+
+        unroll_match!(Self::N_STEPS, I, {
+            res += self.eval_extension::<I>(point_f, point_ef, extra_data, alpha_powers);
+        });
+
+        res
     }
 }
 
@@ -87,13 +83,12 @@ where
     type ExtraData = A::ExtraData;
 
     #[inline(always)]
-    fn eval_base(
+    fn eval_base<const STEP: usize>(
         &self,
         point_f: &[PF<EF>],
         point_ef: &[EF],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EF {
         let mut folder = ConstraintFolder {
             up_f: &point_f[..self.n_columns_f_air()],
@@ -101,22 +96,21 @@ where
             up_ef: &point_ef[..self.n_columns_ef_air()],
             down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
-            alpha_powers: &alpha_powers[self.n_constraints_before_step(step)..],
+            alpha_powers: &alpha_powers[self.n_constraints_before_step(STEP)..],
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder, extra_data, step);
+        Air::eval::<_, STEP>(self, &mut folder, extra_data);
         folder.accumulator
     }
 
     #[inline(always)]
-    fn eval_extension(
+    fn eval_extension<const STEP: usize>(
         &self,
         point_f: &[EF],
         point_ef: &[EF],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EF {
         let mut folder = ConstraintFolder {
             up_f: &point_f[..self.n_columns_f_air()],
@@ -124,22 +118,21 @@ where
             up_ef: &point_ef[..self.n_columns_ef_air()],
             down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
-            alpha_powers: &alpha_powers[self.n_constraints_before_step(step)..],
+            alpha_powers: &alpha_powers[self.n_constraints_before_step(STEP)..],
             accumulator: EF::ZERO,
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder, extra_data, step);
+        Air::eval::<_, STEP>(self, &mut folder, extra_data);
         folder.accumulator
     }
 
     #[inline(always)]
-    fn eval_packed_base(
+    fn eval_packed_base<const STEP: usize>(
         &self,
         point_f: &[PFPacking<EF>],
         point_ef: &[EFPacking<EF>],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedBase {
             up_f: &point_f[..self.n_columns_f_air()],
@@ -147,22 +140,21 @@ where
             up_ef: &point_ef[..self.n_columns_ef_air()],
             down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
-            alpha_powers: &alpha_powers[self.n_constraints_before_step(step)..],
+            alpha_powers: &alpha_powers[self.n_constraints_before_step(STEP)..],
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder, extra_data, step);
+        Air::eval::<_, STEP>(self, &mut folder, extra_data);
         folder.accumulator
     }
 
     #[inline(always)]
-    fn eval_packed_extension(
+    fn eval_packed_extension<const STEP: usize>(
         &self,
         point_f: &[EFPacking<EF>],
         point_ef: &[EFPacking<EF>],
         extra_data: &Self::ExtraData,
         alpha_powers: &[EF],
-        step: usize,
     ) -> EFPacking<EF> {
         let mut folder = ConstraintFolderPackedExtension {
             up_f: &point_f[..self.n_columns_f_air()],
@@ -170,11 +162,11 @@ where
             up_ef: &point_ef[..self.n_columns_ef_air()],
             down_ef: &point_ef[self.n_columns_ef_air()..],
             extra_data,
-            alpha_powers: &alpha_powers[self.n_constraints_before_step(step)..],
+            alpha_powers: &alpha_powers[self.n_constraints_before_step(STEP)..],
             accumulator: Default::default(),
             constraint_index: 0,
         };
-        Air::eval(self, &mut folder, extra_data, step);
+        Air::eval::<_, STEP>(self, &mut folder, extra_data);
         folder.accumulator
     }
 
@@ -578,10 +570,66 @@ pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
     pub sums: &'a [EF],
 }
 
+fn helper_1<
+    const STEP: usize,
+    EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
+    IF: ExtensionField<PF<EF>>,
+    SC: SumcheckComputation<EF>,
+>(
+    zs: &Vec<usize>,
+    folding_factors: &Vec<Vec<PF<EF>>>,
+    rows_f: &Vec<Vec<IF>>,
+    rows_ef: &Vec<Vec<EF>>,
+    computation: &SC,
+    extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
+    eq_mle_eval: Option<EF>,
+    res: &mut Vec<Vec<EF>>,
+) {
+    let n = zs.len();
+    let evals = (0..n)
+        .map(|z_index| {
+            let folding_factors_z = &folding_factors[z_index];
+            let point_f = rows_f
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<IF>()
+                })
+                .collect::<Vec<_>>();
+            let point_ef = rows_ef
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EF>()
+                })
+                .collect::<Vec<_>>();
+
+            let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
+                let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point_f) };
+                computation.eval_base::<STEP>(&point_f, &point_ef, extra_data, alpha_powers)
+            } else {
+                assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
+                let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point_f) };
+                computation.eval_extension::<STEP>(&point_f, &point_ef, extra_data, alpha_powers)
+            };
+            if let Some(eq_mle_eval) = eq_mle_eval {
+                res *= eq_mle_eval;
+            }
+            res
+        })
+        .collect::<Vec<_>>();
+    res.push(evals);
+}
+
 fn sumcheck_compute_not_packed<
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>>,
-    SC,
+    SC: SumcheckComputation<EF>,
 >(
     multilinears_f: &[&[IF]],
     multilinears_ef: &[&[EF]],
@@ -594,10 +642,7 @@ fn sumcheck_compute_not_packed<
     alpha_powers: &[EF],
     missing_mul_factor: Option<EF>,
     fold_size: usize,
-) -> Vec<Vec<(PF<EF>, EF)>>
-where
-    SC: SumcheckComputation<EF>,
-{
+) -> Vec<Vec<(PF<EF>, EF)>> {
     let compute_iteration = |i: usize| -> Vec<Vec<EF>> {
         let eq_mle_eval = eq_mle.as_ref().map(|eq_mle| eq_mle[i]);
         let rows_f = multilinears_f
@@ -617,56 +662,19 @@ where
             })
             .collect::<Vec<_>>();
         let mut res = Vec::with_capacity(computation.n_steps());
-        for (step, (zs, folding_factors)) in computation
-            .steps()
-            .zip(all_zs.iter().zip(all_folding_factors))
-        {
-            let n = zs.len();
-            let evals = (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<IF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
-
-                    let mut res = if TypeId::of::<IF>() == TypeId::of::<PF<EF>>() {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<IF>, Vec<PF<EF>>>(point_f) };
-                        computation.eval_base(&point_f, &point_ef, extra_data, alpha_powers, step)
-                    } else {
-                        assert!(TypeId::of::<IF>() == TypeId::of::<EF>());
-                        let point_f = unsafe { std::mem::transmute::<Vec<IF>, Vec<EF>>(point_f) };
-                        computation.eval_extension(
-                            &point_f,
-                            &point_ef,
-                            extra_data,
-                            alpha_powers,
-                            step,
-                        )
-                    };
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>();
-            res.push(evals);
-        }
+        unroll_match!(SC::N_STEPS, I, {
+            helper_1::<I, _, _, _>(
+                &all_zs[I],
+                &all_folding_factors[I],
+                &rows_f,
+                &rows_ef,
+                computation,
+                extra_data,
+                alpha_powers,
+                eq_mle_eval,
+                &mut res,
+            );
+        });
 
         res
     };
@@ -717,6 +725,51 @@ where
     }
 
     all_evals
+}
+
+fn helper_2<const STEP: usize, EF: ExtensionField<PF<EF>>, SC: SumcheckComputation<EF>>(
+    zs: &Vec<usize>,
+    folding_factors: &Vec<Vec<PF<EF>>>,
+    rows_f: &Vec<Vec<EF>>,
+    rows_ef: &Vec<Vec<EF>>,
+    computation: &SC,
+    extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
+    eq_mle_eval: Option<EF>,
+    res: &mut Vec<Vec<EF>>,
+) {
+    let n = zs.len();
+    let evals = (0..n)
+        .map(|z_index| {
+            let folding_factors_z = &folding_factors[z_index];
+            let point_f = rows_f
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EF>()
+                })
+                .collect::<Vec<_>>();
+            let point_ef = rows_ef
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EF>()
+                })
+                .collect::<Vec<_>>();
+
+            let mut res =
+                computation.eval_extension::<STEP>(&point_f, &point_ef, extra_data, alpha_powers);
+            if let Some(eq_mle_eval) = eq_mle_eval {
+                res *= eq_mle_eval;
+            }
+            res
+        })
+        .collect::<Vec<_>>();
+    res.push(evals);
 }
 
 fn sumcheck_fold_and_compute_not_packed<
@@ -804,48 +857,20 @@ fn sumcheck_fold_and_compute_not_packed<
             })
             .collect::<Vec<_>>();
         let mut res = Vec::with_capacity(computation.n_steps());
-        for (step, (zs, folding_factors)) in computation
-            .steps()
-            .zip(all_zs.iter().zip(all_folding_factors))
-        {
-            let n = zs.len();
-            let evals = (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EF>()
-                        })
-                        .collect::<Vec<_>>();
 
-                    let mut res = computation.eval_extension(
-                        &point_f,
-                        &point_ef,
-                        extra_data,
-                        alpha_powers,
-                        step,
-                    );
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>();
-            res.push(evals);
-        }
+        unroll_match!(SC::N_STEPS, I, {
+            helper_2::<I, _, _>(
+                &all_zs[I],
+                &all_folding_factors[I],
+                &rows_f,
+                &rows_ef,
+                computation,
+                extra_data,
+                alpha_powers,
+                eq_mle_eval,
+                &mut res,
+            );
+        });
 
         res
     };
@@ -901,6 +926,67 @@ fn sumcheck_fold_and_compute_not_packed<
     )
 }
 
+fn helper_3<
+    const STEP: usize,
+    EF: ExtensionField<PF<EF>>, // extension field
+    WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
+    SC: SumcheckComputation<EF>,
+>(
+    zs: &Vec<usize>,
+    folding_factors: &Vec<Vec<PFPacking<EF>>>,
+    rows_f: &Vec<Vec<WPF>>,
+    rows_ef: &Vec<Vec<EFPacking<EF>>>,
+    computation: &SC,
+    extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
+    eq_mle_eval: Option<EFPacking<EF>>,
+    res: &mut Vec<Vec<EFPacking<EF>>>,
+) {
+    let n = zs.len();
+    let evals = (0..n)
+        .map(|z_index| {
+            let folding_factors_z = &folding_factors[z_index];
+            let point_f = rows_f
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<WPF>()
+                })
+                .collect::<Vec<_>>();
+            let point_ef = rows_ef
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EFPacking<EF>>()
+                })
+                .collect::<Vec<_>>();
+            let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
+                let point_f =
+                    unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point_f) };
+                computation.eval_packed_base::<STEP>(&point_f, &point_ef, extra_data, alpha_powers)
+            } else {
+                let point_f =
+                    unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point_f) };
+                computation.eval_packed_extension::<STEP>(
+                    &point_f,
+                    &point_ef,
+                    extra_data,
+                    alpha_powers,
+                )
+            };
+            if let Some(eq_mle_eval) = eq_mle_eval {
+                res *= eq_mle_eval;
+            }
+            res
+        })
+        .collect::<Vec<_>>();
+    res.push(evals);
+}
+
 fn sumcheck_compute_packed<
     EF: ExtensionField<PF<EF>>, // extension field
     WPF: PrimeCharacteristicRing + Mul<PFPacking<EF>, Output = WPF> + Copy + Send + Sync + 'static, // witness packed field (either base or extension)
@@ -953,61 +1039,19 @@ fn sumcheck_compute_packed<
             .collect::<Vec<_>>();
 
         let mut res = Vec::with_capacity(computation.n_steps());
-        for (step, (zs, folding_factors)) in computation
-            .steps()
-            .zip(all_zs.iter().zip(&all_folding_factors))
-        {
-            let n = zs.len();
-            let evals = (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<WPF>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let mut res = if TypeId::of::<WPF>() == TypeId::of::<PFPacking<EF>>() {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<PFPacking<EF>>>(point_f) };
-                        computation.eval_packed_base(
-                            &point_f,
-                            &point_ef,
-                            extra_data,
-                            alpha_powers,
-                            step,
-                        )
-                    } else {
-                        let point_f =
-                            unsafe { std::mem::transmute::<Vec<WPF>, Vec<EFPacking<EF>>>(point_f) };
-                        computation.eval_packed_extension(
-                            &point_f,
-                            &point_ef,
-                            extra_data,
-                            alpha_powers,
-                            step,
-                        )
-                    };
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>();
-            res.push(evals);
-        }
+        unroll_match!(SC::N_STEPS, I, {
+            helper_3::<I, _, _, _>(
+                &all_zs[I],
+                &all_folding_factors[I],
+                &rows_f,
+                &rows_ef,
+                computation,
+                extra_data,
+                alpha_powers,
+                eq_mle_eval,
+                &mut res,
+            );
+        });
 
         res
     };
@@ -1060,6 +1104,58 @@ fn sumcheck_compute_packed<
     }
 
     all_evals
+}
+
+fn helper_4<
+    const STEP: usize,
+    EF: ExtensionField<PF<EF>>, // extension field
+    SC: SumcheckComputation<EF>,
+>(
+    zs: &Vec<usize>,
+    folding_factors: &Vec<Vec<PFPacking<EF>>>,
+    rows_f: &Vec<Vec<EFPacking<EF>>>,
+    rows_ef: &Vec<Vec<EFPacking<EF>>>,
+    computation: &SC,
+    extra_data: &SC::ExtraData,
+    alpha_powers: &[EF],
+    eq_mle_eval: Option<EFPacking<EF>>,
+    res: &mut Vec<Vec<EFPacking<EF>>>,
+) {
+    let n = zs.len();
+    let evals = (0..n)
+        .map(|z_index| {
+            let folding_factors_z = &folding_factors[z_index];
+            let point_f = rows_f
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EFPacking<EF>>()
+                })
+                .collect::<Vec<_>>();
+            let point_ef = rows_ef
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .zip(folding_factors_z.iter())
+                        .map(|(x, s)| *x * *s)
+                        .sum::<EFPacking<EF>>()
+                })
+                .collect::<Vec<_>>();
+            let mut res = computation.eval_packed_extension::<STEP>(
+                &point_f,
+                &point_ef,
+                extra_data,
+                alpha_powers,
+            );
+            if let Some(eq_mle_eval) = eq_mle_eval {
+                res *= eq_mle_eval;
+            }
+            res
+        })
+        .collect::<Vec<_>>();
+    res.push(evals);
 }
 
 fn sumcheck_fold_and_compute_packed<
@@ -1168,47 +1264,19 @@ where
             })
             .collect::<Vec<_>>();
         let mut res = Vec::with_capacity(computation.n_steps());
-        for (step, (zs, folding_factors)) in computation
-            .steps()
-            .zip(all_zs.iter().zip(&all_folding_factors))
-        {
-            let n = zs.len();
-            let evals = (0..n)
-                .map(|z_index| {
-                    let folding_factors_z = &folding_factors[z_index];
-                    let point_f = rows_f
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let point_ef = rows_ef
-                        .iter()
-                        .map(|row| {
-                            row.iter()
-                                .zip(folding_factors_z.iter())
-                                .map(|(x, s)| *x * *s)
-                                .sum::<EFPacking<EF>>()
-                        })
-                        .collect::<Vec<_>>();
-                    let mut res = computation.eval_packed_extension(
-                        &point_f,
-                        &point_ef,
-                        extra_data,
-                        alpha_powers,
-                        step,
-                    );
-                    if let Some(eq_mle_eval) = eq_mle_eval {
-                        res *= eq_mle_eval;
-                    }
-                    res
-                })
-                .collect::<Vec<_>>();
-            res.push(evals);
-        }
+        unroll_match!(SC::N_STEPS, I, {
+            helper_4::<I, _, _>(
+                &all_zs[I],
+                &all_folding_factors[I],
+                &rows_f,
+                &rows_ef,
+                computation,
+                extra_data,
+                alpha_powers,
+                eq_mle_eval,
+                &mut res,
+            );
+        });
 
         res
     };

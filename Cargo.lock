@@ -116,6 +116,7 @@ dependencies = [
  "p3-util 0.3.0 (git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles)",
  "rayon",
  "sumcheck",
+ "unroll_macro",
 ]
 
 [[package]]
@@ -440,6 +441,7 @@ dependencies = [
  "p3-koala-bear",
  "p3-util 0.3.0 (git+https://github.com/TomWambsgans/Plonky3.git?branch=modular-precompiles)",
  "rayon",
+ "unroll_macro",
 ]
 
 [[package]]
@@ -499,6 +501,15 @@ name = "unicode-ident"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
+
+[[package]]
+name = "unroll_macro"
+version = "0.3.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "wasi"
