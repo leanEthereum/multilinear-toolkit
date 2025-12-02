@@ -12,7 +12,7 @@ use rayon::{
     slice::{Iter, IterMut},
 };
 
-pub const PARALLEL_THRESHOLD: usize = 1 << 14;
+pub const PARALLEL_THRESHOLD: usize = 1 << 9;
 
 pub fn pack_extension<EF: ExtensionField<PF<EF>>>(slice: &[EF]) -> Vec<EFPacking<EF>> {
     let width = packing_width::<EF>();
