@@ -17,12 +17,15 @@ use unroll_macro::unroll_match;
 
 pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
     type ExtraData: Send + Sync + 'static;
-    const N_STEPS: usize = 1;
 
     fn degrees(&self) -> Vec<usize>;
 
     fn max_degree(&self) -> usize {
         self.degrees().into_iter().max().unwrap()
+    }
+
+    fn n_steps(&self) -> usize {
+        self.degrees().len()
     }
 
     fn eval_base<const STEP: usize>(
@@ -57,11 +60,6 @@ pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
         alpha_powers: &[EF],
     ) -> EFPacking<EF>;
 
-    #[inline(always)]
-    fn n_steps(&self) -> usize {
-        self.degrees().len()
-    }
-
     fn eval_extension_everywhere(
         &self,
         point_f: &[EF],
@@ -70,7 +68,7 @@ pub trait SumcheckComputation<EF: ExtensionField<PF<EF>>>: Sync + 'static {
         alpha_powers: &[EF],
     ) -> EF {
         let mut res = EF::ZERO;
-        unroll_match!(Self::N_STEPS, I, {
+        unroll_match!(self.n_steps(), I, {
             res += self.eval_extension::<I>(point_f, point_ef, extra_data, alpha_powers);
         });
         res
@@ -109,7 +107,6 @@ where
     A: Send + Sync + Air,
 {
     type ExtraData = A::ExtraData;
-    const N_STEPS: usize = A::N_STEPS;
 
     impl_air_eval!(eval_base, ConstraintFolder, PF<EF>, EF, EF, EF::ZERO);
     impl_air_eval!(eval_extension, ConstraintFolder, EF, EF, EF, EF::ZERO);
@@ -616,7 +613,7 @@ where
         let rows_ef = extract_rows(multilinears_ef, i, fold_size, skips);
 
         let mut res = Vec::with_capacity(computation.n_steps());
-        unroll_match!(SC::N_STEPS, I, {
+        unroll_match!(computation.n_steps(), I, {
             res.push(eval_step_scalar::<I, EF, IF, SC>(
                 &all_zs[I],
                 &all_folding_factors[I],
@@ -675,7 +672,7 @@ where
         let rows_ef = extract_rows(multilinears_ef, i, packed_fold_size, skips);
 
         let mut res = Vec::with_capacity(computation.n_steps());
-        unroll_match!(SC::N_STEPS, I, {
+        unroll_match!(computation.n_steps(), I, {
             res.push(eval_step_packed::<I, EF, WPF, SC>(
                 &all_zs[I],
                 &packed_factors[I],
@@ -878,7 +875,7 @@ where
             .collect();
 
         let mut res = Vec::with_capacity(computation.n_steps());
-        unroll_match!(SC::N_STEPS, I, {
+        unroll_match!(computation.n_steps(), I, {
             res.push(eval_step_scalar::<I, EF, EF, SC>(
                 &all_zs[I],
                 &all_folding_factors[I],
@@ -1008,7 +1005,7 @@ where
             .collect();
 
         let mut res = Vec::with_capacity(computation.n_steps());
-        unroll_match!(SC::N_STEPS, I, {
+        unroll_match!(computation.n_steps(), I, {
             res.push(eval_step_packed::<I, EF, EFPacking<EF>, SC>(
                 &all_zs[I],
                 &packed_factors[I],
