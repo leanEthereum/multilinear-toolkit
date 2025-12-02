@@ -10,6 +10,7 @@ use p3_field::dot_product;
 use p3_util::log2_strict_usize;
 use rayon::prelude::*;
 use std::any::TypeId;
+use std::array;
 use std::iter::Sum;
 use std::ops::Add;
 use std::ops::Mul;
@@ -109,6 +110,7 @@ where
     A: Send + Sync + Air,
 {
     type ExtraData = A::ExtraData;
+    const N_STEPS: usize = A::N_STEPS;
 
     impl_air_eval!(eval_base, ConstraintFolder, PF<EF>, EF, EF, EF::ZERO);
     impl_air_eval!(eval_extension, ConstraintFolder, EF, EF, EF, EF::ZERO);
@@ -133,13 +135,77 @@ where
         self.degrees()
     }
 }
+macro_rules! match_n_steps {
+    ($n_steps:expr, $call:ident) => {
+        match $n_steps {
+            1 => $call!(1),
+            2 => $call!(2),
+            3 => $call!(3),
+            4 => $call!(4),
+            5 => $call!(5),
+            _ => panic!("Unsupported number of sumcheck steps"),
+        }
+    };
+}
+
+pub fn sumcheck_compute_vec<'a, EF: ExtensionField<PF<EF>>, SC>(
+    group_f: &MleGroupRef<'a, EF>,
+    group_ef: &MleGroupRef<'a, EF>,
+    params: SumcheckComputeParams<'a, EF, SC>,
+    all_zs: &[Vec<usize>],
+    folding_factors: &[Vec<Vec<PF<EF>>>],
+) -> Vec<Vec<(PF<EF>, EF)>>
+where
+    SC: SumcheckComputation<EF> + 'static,
+{
+    macro_rules! call {
+        ($n:expr) => {
+            sumcheck_compute::<EF, SC, $n>(
+                group_f,
+                group_ef,
+                params,
+                &all_zs.to_vec().try_into().unwrap(),
+                &folding_factors.to_vec().try_into().unwrap(),
+            )
+            .to_vec()
+        };
+    }
+    match_n_steps!(SC::N_STEPS, call)
+}
+
+pub fn fold_and_sumcheck_compute_vec<
+    'a,
+    EF: ExtensionField<PF<EF>>,
+    SC: SumcheckComputation<EF>,
+>(
+    prev_folding_factors: &[EF],
+    group_f: &MleGroupRef<'a, EF>,
+    group_ef: &MleGroupRef<'a, EF>,
+    params: SumcheckComputeParams<'a, EF, SC>,
+    all_zs: &[Vec<usize>],
+    folding_factors: &[Vec<Vec<PF<EF>>>],
+) -> (Vec<Vec<(PF<EF>, EF)>>, MleGroupOwned<EF>, MleGroupOwned<EF>) {
+    macro_rules! call {
+        ($n:expr) => {{
+            let (evals, folded_f, folded_ef) = fold_and_sumcheck_compute::<EF, SC, $n>(
+                prev_folding_factors,
+                group_f,
+                group_ef,
+                params,
+                &all_zs.to_vec().try_into().unwrap(),
+                &folding_factors.to_vec().try_into().unwrap(),
+            );
+            (evals.to_vec(), folded_f, folded_ef)
+        }};
+    }
+    match_n_steps!(SC::N_STEPS, call)
+}
 
 #[derive(Debug)]
 pub struct SumcheckComputeParams<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckComputation<EF>> {
     pub skips: usize,
     pub eq_mle: Option<&'a MleOwned<EF>>,
     pub first_eq_factor: Option<EF>,
-    pub folding_factors: &'a [Vec<Vec<PF<EF>>>],
     pub computation: &'a SC,
     pub extra_data: &'a SC::ExtraData,
     pub alpha_powers: &'a [EF],
@@ -169,38 +235,39 @@ where
     }
 }
 
-fn sum_nested<T: Add<Output = T> + Copy>(current: &mut Vec<Vec<T>>, new: Vec<Vec<T>>) {
+fn sum_nested<const N: usize, T: Add<Output = T> + Copy>(
+    current: &mut [Vec<T>; N],
+    new: [Vec<T>; N],
+) {
     current.iter_mut().zip(new).for_each(|(curr, new)| {
         curr.iter_mut().zip(new).for_each(|(c, n)| *c = *c + n);
     });
 }
 
-fn collect_evals<EF, T: Copy, F>(
-    all_zs: &[Vec<usize>],
-    all_sums: Vec<Vec<T>>,
+fn collect_evals<EF, T: Copy, F, const N_STEPS: usize>(
+    all_zs: &[Vec<usize>; N_STEPS],
+    all_sums: [Vec<T>; N_STEPS],
     missing_mul_factor: Option<EF>,
     extract: F,
-) -> Vec<Vec<(PF<EF>, EF)>>
+) -> [Vec<(PF<EF>, EF)>; N_STEPS]
 where
     EF: ExtensionField<PF<EF>>,
     F: Fn(T) -> EF,
 {
-    all_zs
-        .iter()
-        .zip(all_sums)
-        .map(|(zs, sum_zs)| {
-            zs.iter()
-                .enumerate()
-                .map(|(z_index, z)| {
-                    let mut sum_z = extract(sum_zs[z_index]);
-                    if let Some(factor) = missing_mul_factor {
-                        sum_z *= factor;
-                    }
-                    (PF::<EF>::from_usize(*z), sum_z)
-                })
-                .collect()
-        })
-        .collect()
+    array::from_fn(|step| {
+        let zs = &all_zs[step];
+        let sum_zs = &all_sums[step];
+        zs.iter()
+            .enumerate()
+            .map(|(z_index, z)| {
+                let mut sum_z = extract(sum_zs[z_index]);
+                if let Some(factor) = missing_mul_factor {
+                    sum_z *= factor;
+                }
+                (PF::<EF>::from_usize(*z), sum_z)
+            })
+            .collect()
+    })
 }
 
 fn eval_step_scalar<const STEP: usize, EF, IF, SC>(
@@ -287,6 +354,7 @@ where
         .collect()
 }
 
+#[inline(always)]
 fn extract_rows<T: Copy>(
     multilinears: &[&[T]],
     i: usize,
@@ -299,11 +367,11 @@ fn extract_rows<T: Copy>(
         .collect()
 }
 
-fn try_special_case_compute<'a, EF, SC>(
+fn try_special_case_compute<'a, EF, SC, const N_STEPS: usize>(
     group_f: &MleGroupRef<'a, EF>,
     group_ef: &MleGroupRef<'a, EF>,
     params: &SumcheckComputeParams<'a, EF, SC>,
-) -> Option<Vec<Vec<(PF<EF>, EF)>>>
+) -> Option<[Vec<(PF<EF>, EF)>; N_STEPS]>
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
@@ -334,10 +402,14 @@ where
             }
             _ => unimplemented!(),
         };
-        return Some(vec![vec![
-            (PF::<EF>::ZERO, poly.coeffs[0]),
-            (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-        ]]);
+        return Some(
+            vec![vec![
+                (PF::<EF>::ZERO, poly.coeffs[0]),
+                (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
+            ]]
+            .try_into()
+            .unwrap(),
+        );
     }
 
     if TypeId::of::<SC>() == TypeId::of::<GKRQuotientComputation<2>>() {
@@ -373,21 +445,29 @@ where
             ),
             _ => unimplemented!(),
         };
-        return Some(vec![vec![
-            (PF::<EF>::ZERO, poly.coeffs[0]),
-            (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-        ]]);
+        return Some(
+            vec![vec![
+                (PF::<EF>::ZERO, poly.coeffs[0]),
+                (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
+            ]]
+            .try_into()
+            .unwrap(),
+        );
     }
 
     None
 }
 
-fn try_special_case_fold_and_compute<'a, EF, SC>(
+fn try_special_case_fold_and_compute<'a, EF, SC, const N_STEPS: usize>(
     prev_folding_factors: &[EF],
     group_f: &MleGroupRef<'a, EF>,
     group_ef: &MleGroupRef<'a, EF>,
     params: &SumcheckComputeParams<'a, EF, SC>,
-) -> Option<(Vec<Vec<(PF<EF>, EF)>>, MleGroupOwned<EF>, MleGroupOwned<EF>)>
+) -> Option<(
+    [Vec<(PF<EF>, EF)>; N_STEPS],
+    MleGroupOwned<EF>,
+    MleGroupOwned<EF>,
+)>
 where
     EF: ExtensionField<PF<EF>>,
     SC: SumcheckComputation<EF> + 'static,
@@ -444,7 +524,9 @@ where
             vec![vec![
                 (PF::<EF>::ZERO, poly.coeffs[0]),
                 (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-            ]],
+            ]]
+            .try_into()
+            .unwrap(),
             folded_f,
             folded_ef,
         ));
@@ -496,7 +578,9 @@ where
             vec![vec![
                 (PF::<EF>::ZERO, poly.coeffs[0]),
                 (PF::<EF>::TWO, poly.evaluate(EF::TWO)),
-            ]],
+            ]]
+            .try_into()
+            .unwrap(),
             folded_f,
             folded_ef,
         ));
@@ -505,12 +589,13 @@ where
     None
 }
 
-pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC>(
+pub fn sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC, const N_STEPS: usize>(
     group_f: &MleGroupRef<'a, EF>,
     group_ef: &MleGroupRef<'a, EF>,
     params: SumcheckComputeParams<'a, EF, SC>,
-    all_zs: &Vec<Vec<usize>>,
-) -> Vec<Vec<(PF<EF>, EF)>>
+    all_zs: &[Vec<usize>; N_STEPS],
+    folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
+) -> [Vec<(PF<EF>, EF)>; N_STEPS]
 where
     SC: SumcheckComputation<EF> + 'static,
 {
@@ -521,7 +606,6 @@ where
     let SumcheckComputeParams {
         skips,
         eq_mle,
-        folding_factors,
         computation,
         extra_data,
         alpha_powers,
@@ -536,7 +620,7 @@ where
     };
 
     match group_f {
-        MleGroupRef::ExtensionPacked(mf) => sumcheck_compute_packed::<EF, EFPacking<EF>, _>(
+        MleGroupRef::ExtensionPacked(mf) => sumcheck_compute_packed::<EF, EFPacking<EF>, _, _>(
             mf,
             group_ef.as_extension_packed().unwrap(),
             all_zs,
@@ -549,7 +633,7 @@ where
             missing_mul_factor,
             packed_fold_size,
         ),
-        MleGroupRef::BasePacked(mf) => sumcheck_compute_packed::<EF, PFPacking<EF>, _>(
+        MleGroupRef::BasePacked(mf) => sumcheck_compute_packed::<EF, PFPacking<EF>, _, _>(
             mf,
             group_ef.as_extension_packed().unwrap(),
             all_zs,
@@ -562,7 +646,7 @@ where
             missing_mul_factor,
             packed_fold_size,
         ),
-        MleGroupRef::Base(mf) => sumcheck_compute_scalar::<EF, PF<EF>, _>(
+        MleGroupRef::Base(mf) => sumcheck_compute_scalar::<EF, PF<EF>, _, _>(
             mf,
             group_ef.as_extension().unwrap(),
             all_zs,
@@ -575,7 +659,7 @@ where
             missing_mul_factor,
             fold_size,
         ),
-        MleGroupRef::Extension(mf) => sumcheck_compute_scalar::<EF, EF, _>(
+        MleGroupRef::Extension(mf) => sumcheck_compute_scalar::<EF, EF, _, _>(
             mf,
             group_ef.as_extension().unwrap(),
             all_zs,
@@ -591,32 +675,32 @@ where
     }
 }
 
-fn sumcheck_compute_scalar<EF, IF, SC>(
+fn sumcheck_compute_scalar<EF, IF, SC, const N_STEPS: usize>(
     multilinears_f: &[&[IF]],
     multilinears_ef: &[&[EF]],
-    all_zs: &[Vec<usize>],
+    all_zs: &[Vec<usize>; N_STEPS],
     skips: usize,
     eq_mle: Option<&[EF]>,
-    all_folding_factors: &[Vec<Vec<PF<EF>>>],
+    all_folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
     computation: &SC,
     extra_data: &SC::ExtraData,
     alpha_powers: &[EF],
     missing_mul_factor: Option<EF>,
     fold_size: usize,
-) -> Vec<Vec<(PF<EF>, EF)>>
+) -> [Vec<(PF<EF>, EF)>; N_STEPS]
 where
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>> + Mul<PF<EF>, Output = IF> + Sum + Copy,
     SC: SumcheckComputation<EF>,
 {
-    let compute_iteration = |i: usize| -> Vec<Vec<EF>> {
+    let compute_iteration = |i: usize| {
         let eq_mle_eval = eq_mle.map(|e| e[i]);
         let rows_f = extract_rows(multilinears_f, i, fold_size, skips);
         let rows_ef = extract_rows(multilinears_ef, i, fold_size, skips);
 
-        let mut res = Vec::with_capacity(computation.n_steps());
+        let mut res: [Vec<EF>; N_STEPS] = array::from_fn(|_| Vec::new());
         unroll_match!(SC::N_STEPS, I, {
-            res.push(eval_step_scalar::<I, EF, IF, SC>(
+            res[I] = eval_step_scalar::<I, EF, IF, SC>(
                 &all_zs[I],
                 &all_folding_factors[I],
                 &rows_f,
@@ -625,29 +709,29 @@ where
                 extra_data,
                 alpha_powers,
                 eq_mle_eval,
-            ));
+            );
         });
         res
     };
 
-    let init = all_zs.iter().map(|zs| vec![EF::ZERO; zs.len()]).collect();
+    let init: [Vec<EF>; N_STEPS] = array::from_fn(|i| vec![EF::ZERO; all_zs[i].len()]);
     let all_sum_zs = accumulate(fold_size, init, compute_iteration, sum_nested);
     collect_evals(all_zs, all_sum_zs, missing_mul_factor, |e| e)
 }
 
-fn sumcheck_compute_packed<EF, WPF, SC>(
+fn sumcheck_compute_packed<EF, WPF, SC, const N_STEPS: usize>(
     multilinears_f: &[&[WPF]],
     multilinears_ef: &[&[EFPacking<EF>]],
-    all_zs: &[Vec<usize>],
+    all_zs: &[Vec<usize>; N_STEPS],
     skips: usize,
     eq_mle: Option<&[EFPacking<EF>]>,
-    all_folding_factors: &[Vec<Vec<PF<EF>>>],
+    all_folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
     computation: &SC,
     extra_data: &SC::ExtraData,
     alpha_powers: &[EF],
     missing_mul_factor: Option<EF>,
     packed_fold_size: usize,
-) -> Vec<Vec<(PF<EF>, EF)>>
+) -> [Vec<(PF<EF>, EF)>; N_STEPS]
 where
     EF: ExtensionField<PF<EF>>,
     WPF: PrimeCharacteristicRing
@@ -659,23 +743,21 @@ where
         + 'static,
     SC: SumcheckComputation<EF>,
 {
-    let packed_factors: Vec<Vec<Vec<PFPacking<EF>>>> = all_folding_factors
-        .iter()
-        .map(|ff| {
-            ff.iter()
-                .map(|s| s.iter().map(|&x| PFPacking::<EF>::from(x)).collect())
-                .collect()
-        })
-        .collect();
+    let packed_factors: [Vec<Vec<PFPacking<EF>>>; N_STEPS] = array::from_fn(|step| {
+        all_folding_factors[step]
+            .iter()
+            .map(|s| s.iter().map(|&x| PFPacking::<EF>::from(x)).collect())
+            .collect()
+    });
 
-    let compute_iteration = |i: usize| -> Vec<Vec<EFPacking<EF>>> {
+    let compute_iteration = |i: usize| {
         let eq_mle_eval = eq_mle.map(|e| e[i]);
         let rows_f = extract_rows(multilinears_f, i, packed_fold_size, skips);
         let rows_ef = extract_rows(multilinears_ef, i, packed_fold_size, skips);
 
-        let mut res = Vec::with_capacity(computation.n_steps());
+        let mut res: [Vec<EFPacking<EF>>; N_STEPS] = array::from_fn(|_| Vec::new());
         unroll_match!(SC::N_STEPS, I, {
-            res.push(eval_step_packed::<I, EF, WPF, SC>(
+            res[I] = eval_step_packed::<I, EF, WPF, SC>(
                 &all_zs[I],
                 &packed_factors[I],
                 &rows_f,
@@ -684,28 +766,36 @@ where
                 extra_data,
                 alpha_powers,
                 eq_mle_eval,
-            ));
+            );
         });
         res
     };
 
-    let init = all_zs
-        .iter()
-        .map(|zs| vec![EFPacking::<EF>::ZERO; zs.len()])
-        .collect();
+    let init = array::from_fn(|step| vec![EFPacking::<EF>::ZERO; all_zs[step].len()]);
+
     let all_sum_zs = accumulate(packed_fold_size, init, compute_iteration, sum_nested);
     collect_evals(all_zs, all_sum_zs, missing_mul_factor, |e| {
         EFPacking::<EF>::to_ext_iter([e]).sum()
     })
 }
 
-pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckComputation<EF>>(
+fn fold_and_sumcheck_compute<
+    'a,
+    EF: ExtensionField<PF<EF>>,
+    SC: SumcheckComputation<EF>,
+    const N_STEPS: usize,
+>(
     prev_folding_factors: &[EF],
     group_f: &MleGroupRef<'a, EF>,
     group_ef: &MleGroupRef<'a, EF>,
     params: SumcheckComputeParams<'a, EF, SC>,
-    all_zs: &[Vec<usize>],
-) -> (Vec<Vec<(PF<EF>, EF)>>, MleGroupOwned<EF>, MleGroupOwned<EF>) {
+    all_zs: &[Vec<usize>; N_STEPS],
+    folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
+) -> (
+    [Vec<(PF<EF>, EF)>; N_STEPS],
+    MleGroupOwned<EF>,
+    MleGroupOwned<EF>,
+) {
     if let Some(result) =
         try_special_case_fold_and_compute(prev_folding_factors, group_f, group_ef, &params)
     {
@@ -715,7 +805,6 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
     let SumcheckComputeParams {
         skips,
         eq_mle,
-        folding_factors,
         computation,
         extra_data,
         alpha_powers,
@@ -731,7 +820,7 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
 
     match group_f {
         MleGroupRef::ExtensionPacked(mf) => {
-            sumcheck_fold_and_compute_packed::<EF, EFPacking<EF>, _>(
+            sumcheck_fold_and_compute_packed::<EF, EFPacking<EF>, _, _>(
                 prev_folding_factors,
                 mf,
                 group_ef.as_extension_packed().unwrap(),
@@ -747,7 +836,7 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
                 |wpf, ef| wpf * ef,
             )
         }
-        MleGroupRef::BasePacked(mf) => sumcheck_fold_and_compute_packed::<EF, PFPacking<EF>, _>(
+        MleGroupRef::BasePacked(mf) => sumcheck_fold_and_compute_packed::<EF, PFPacking<EF>, _, _>(
             prev_folding_factors,
             mf,
             group_ef.as_extension_packed().unwrap(),
@@ -762,7 +851,7 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
             compute_fold_size,
             |wpf, ef| EFPacking::<EF>::from(ef) * wpf,
         ),
-        MleGroupRef::Base(mf) => sumcheck_fold_and_compute_scalar::<EF, PF<EF>, _>(
+        MleGroupRef::Base(mf) => sumcheck_fold_and_compute_scalar::<EF, PF<EF>, _, _>(
             prev_folding_factors,
             mf,
             group_ef.as_extension().unwrap(),
@@ -776,7 +865,7 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
             missing_mul_factor,
             fold_size,
         ),
-        MleGroupRef::Extension(mf) => sumcheck_fold_and_compute_scalar::<EF, EF, _>(
+        MleGroupRef::Extension(mf) => sumcheck_fold_and_compute_scalar::<EF, EF, _, _>(
             prev_folding_factors,
             mf,
             group_ef.as_extension().unwrap(),
@@ -793,20 +882,24 @@ pub fn fold_and_sumcheck_compute<'a, EF: ExtensionField<PF<EF>>, SC: SumcheckCom
     }
 }
 
-fn sumcheck_fold_and_compute_scalar<EF, IF, SC>(
+fn sumcheck_fold_and_compute_scalar<EF, IF, SC, const N_STEPS: usize>(
     prev_folding_factors: &[EF],
     multilinears_f: &[&[IF]],
     multilinears_ef: &[&[EF]],
-    all_zs: &[Vec<usize>],
+    all_zs: &[Vec<usize>; N_STEPS],
     skips: usize,
     eq_mle: Option<&[EF]>,
-    all_folding_factors: &[Vec<Vec<PF<EF>>>],
+    all_folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
     computation: &SC,
     extra_data: &SC::ExtraData,
     alpha_powers: &[EF],
     missing_mul_factor: Option<EF>,
     compute_fold_size: usize,
-) -> (Vec<Vec<(PF<EF>, EF)>>, MleGroupOwned<EF>, MleGroupOwned<EF>)
+) -> (
+    [Vec<(PF<EF>, EF)>; N_STEPS],
+    MleGroupOwned<EF>,
+    MleGroupOwned<EF>,
+)
 where
     EF: ExtensionField<PF<EF>> + ExtensionField<IF>,
     IF: ExtensionField<PF<EF>> + Mul<PF<EF>, Output = IF> + Sum + Copy,
@@ -823,7 +916,7 @@ where
         .map(|_| EF::zero_vec(prev_folded_size))
         .collect();
 
-    let compute_iteration = |i: usize| -> Vec<Vec<EF>> {
+    let compute_iteration = |i: usize| {
         let eq_mle_eval = eq_mle.map(|e| e[i]);
 
         let rows_f: Vec<Vec<EF>> = multilinears_f
@@ -876,9 +969,9 @@ where
             })
             .collect();
 
-        let mut res = Vec::with_capacity(computation.n_steps());
+        let mut res: [Vec<EF>; N_STEPS] = array::from_fn(|_| Vec::new());
         unroll_match!(SC::N_STEPS, I, {
-            res.push(eval_step_scalar::<I, EF, EF, SC>(
+            res[I] = eval_step_scalar::<I, EF, EF, SC>(
                 &all_zs[I],
                 &all_folding_factors[I],
                 &rows_f,
@@ -887,12 +980,12 @@ where
                 extra_data,
                 alpha_powers,
                 eq_mle_eval,
-            ));
+            );
         });
         res
     };
 
-    let init = all_zs.iter().map(|zs| vec![EF::ZERO; zs.len()]).collect();
+    let init: [Vec<EF>; N_STEPS] = array::from_fn(|i| vec![EF::ZERO; all_zs[i].len()]);
     let all_sum_zs = accumulate(compute_fold_size, init, compute_iteration, sum_nested);
     let evals = collect_evals(all_zs, all_sum_zs, missing_mul_factor, |e| e);
 
@@ -903,21 +996,25 @@ where
     )
 }
 
-fn sumcheck_fold_and_compute_packed<EF, WPF, SC>(
+fn sumcheck_fold_and_compute_packed<EF, WPF, SC, const N_STEPS: usize>(
     prev_folding_factors: &[EF],
     multilinears_f: &[&[WPF]],
     multilinears_ef: &[&[EFPacking<EF>]],
-    all_zs: &[Vec<usize>],
+    all_zs: &[Vec<usize>; N_STEPS],
     skips: usize,
     eq_mle: Option<&[EFPacking<EF>]>,
-    all_folding_factors: &[Vec<Vec<PF<EF>>>],
+    all_folding_factors: &[Vec<Vec<PF<EF>>>; N_STEPS],
     computation: &SC,
     extra_data: &SC::ExtraData,
     alpha_powers: &[EF],
     missing_mul_factor: Option<EF>,
     compute_fold_size: usize,
     mul: impl Fn(WPF, EF) -> EFPacking<EF> + Sync + Send,
-) -> (Vec<Vec<(PF<EF>, EF)>>, MleGroupOwned<EF>, MleGroupOwned<EF>)
+) -> (
+    [Vec<(PF<EF>, EF)>; N_STEPS],
+    MleGroupOwned<EF>,
+    MleGroupOwned<EF>,
+)
 where
     EF: ExtensionField<PF<EF>>,
     WPF: PrimeCharacteristicRing
@@ -950,7 +1047,7 @@ where
         })
         .collect();
 
-    let compute_iteration = |i: usize| -> Vec<Vec<EFPacking<EF>>> {
+    let compute_iteration = |i: usize| {
         let eq_mle_eval = eq_mle.map(|e| e[i]);
 
         let rows_f: Vec<Vec<EFPacking<EF>>> = multilinears_f
@@ -1006,9 +1103,9 @@ where
             })
             .collect();
 
-        let mut res = Vec::with_capacity(computation.n_steps());
+        let mut res: [Vec<EFPacking<EF>>; N_STEPS] = array::from_fn(|_| Vec::new());
         unroll_match!(SC::N_STEPS, I, {
-            res.push(eval_step_packed::<I, EF, EFPacking<EF>, SC>(
+            res[I] = eval_step_packed::<I, EF, EFPacking<EF>, SC>(
                 &all_zs[I],
                 &packed_factors[I],
                 &rows_f,
@@ -1017,15 +1114,13 @@ where
                 extra_data,
                 alpha_powers,
                 eq_mle_eval,
-            ));
+            );
         });
         res
     };
 
-    let init = all_zs
-        .iter()
-        .map(|zs| vec![EFPacking::<EF>::ZERO; zs.len()])
-        .collect();
+    let init: [Vec<EFPacking<EF>>; N_STEPS] =
+        array::from_fn(|i| vec![EFPacking::<EF>::ZERO; all_zs[i].len()]);
     let all_sum_zs = accumulate(compute_fold_size, init, compute_iteration, sum_nested);
     let evals = collect_evals(all_zs, all_sum_zs, missing_mul_factor, |e| {
         EFPacking::<EF>::to_ext_iter([e]).sum()

@@ -289,7 +289,6 @@ where
         first_eq_factor: eq_factor
             .as_ref()
             .map(|(first_eq_factor, _)| first_eq_factor[0]),
-        folding_factors: &all_compute_folding_factors,
         computation,
         extra_data,
         alpha_powers,
@@ -299,22 +298,24 @@ where
     let all_computed_evals = match &prev_folding_factors {
         Some(prev_folding_factors) => {
             let (computed_p_evals, folded_multilinears_f, folded_multilinears_ef) =
-                fold_and_sumcheck_compute(
+                fold_and_sumcheck_compute_vec(
                     prev_folding_factors,
                     &multilinears_f.by_ref(),
                     &multilinears_ef.by_ref(),
                     sc_params,
                     &all_zs,
+                    &all_compute_folding_factors,
                 );
             *multilinears_f = folded_multilinears_f.into();
             *multilinears_ef = folded_multilinears_ef.into();
             computed_p_evals
         }
-        None => sumcheck_compute(
+        None => sumcheck_compute_vec(
             &multilinears_f.by_ref(),
             &multilinears_ef.by_ref(),
             sc_params,
             &all_zs,
+            &all_compute_folding_factors,
         ),
     };
 
