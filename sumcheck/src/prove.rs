@@ -4,7 +4,6 @@ use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PrimeCharacteristicRing;
 use p3_util::log2_strict_usize;
-use rayon::prelude::*;
 
 use crate::*;
 
@@ -322,7 +321,7 @@ where
         // We do not take advantage of this trick to send less data, but we could do so in the future (TODO)
         p *= &DensePolynomial::lagrange_interpolation(
             &(0..1 << skips)
-                .into_par_iter()
+                .into_iter()
                 .map(|i| (PF::<EF>::from_usize(i), selectors[i].evaluate(eq_factor[0])))
                 .collect::<Vec<_>>(),
         )

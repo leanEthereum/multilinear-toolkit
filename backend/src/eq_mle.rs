@@ -81,13 +81,23 @@ pub fn compute_sparse_eval_eq<F: ExtensionField<PF<F>>>(eval: &[F], out: &mut [F
             &mut buff,
             scalar,
         );
-        out[ends_big_endian..]
-            .par_iter_mut()
-            .step_by(1 << boolean_ends.len())
-            .zip(buff.into_par_iter())
-            .for_each(|(o, v)| {
-                *o += v;
-            });
+        if buff.len() < PARALLEL_THRESHOLD {
+            out[ends_big_endian..]
+                .iter_mut()
+                .step_by(1 << boolean_ends.len())
+                .zip(buff.into_iter())
+                .for_each(|(o, v)| {
+                    *o += v;
+                });
+        } else {
+            out[ends_big_endian..]
+                .par_iter_mut()
+                .step_by(1 << boolean_ends.len())
+                .zip(buff.into_par_iter())
+                .for_each(|(o, v)| {
+                    *o += v;
+                });
+        }
     }
 }
 
@@ -1181,17 +1191,6 @@ pub fn parallel_inner_repeat<A: Copy + Send + Sync>(src: &[A], n: usize) -> Vec<
     }
 }
 
-/// Computes the optimal workload size for `T` to fit in L1 cache (32 KB).
-///
-/// Ensures efficient memory access by dividing the cache size by `T`'s size.
-/// The result represents how many elements of `T` can be processed per thread.
-///
-/// Helps minimize cache misses and improve performance in parallel workloads.
-#[must_use]
-pub const fn workload_size<T: Sized>() -> usize {
-    const L1_CACHE_SIZE: usize = 1 << 15; // 32 KB
-    L1_CACHE_SIZE / size_of::<T>()
-}
 
 #[cfg(test)]
 mod tests {
