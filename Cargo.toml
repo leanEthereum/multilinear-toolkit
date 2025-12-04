@@ -12,7 +12,7 @@ resolver = "2"
 members = ["backend", "constraints_folder", "sumcheck"]
 
 [workspace.dependencies]
-fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git", branch = "modular-precompiles" }
+fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git", branch = "simple-lean-vm" }
 p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
 p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
 p3-air = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "modular-precompiles" }
