@@ -151,7 +151,7 @@ pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
         sum,
         None,
         n_rounds - 2,
-        true,
+        false,
     );
 
     challenges.splice(0..0, [r1, r2]);
@@ -175,19 +175,15 @@ pub fn compute_product_sumcheck_polynomial<
 
     let num_elements = n;
 
-    // Extract the computation logic into a closure
-    let compute_coeffs = || {
+    let (c0_packed, c2_packed) = if num_elements < PARALLEL_THRESHOLD {
         pol_0[..n / 2]
             .iter()
             .zip(pol_0[n / 2..].iter())
             .zip(pol_1[..n / 2].iter().zip(pol_1[n / 2..].iter()))
             .map(sumcheck_quadratic)
-    };
-
-    let (c0_packed, c2_packed) = if num_elements < PARALLEL_THRESHOLD {
-        compute_coeffs().fold((EFPacking::ZERO, EFPacking::ZERO), |(a0, a2), (b0, b2)| {
-            (a0 + b0, a2 + b2)
-        })
+            .fold((EFPacking::ZERO, EFPacking::ZERO), |(a0, a2), (b0, b2)| {
+                (a0 + b0, a2 + b2)
+            })
     } else {
         pol_0[..n / 2]
             .par_iter()
@@ -208,9 +204,9 @@ pub fn compute_product_sumcheck_polynomial<
 }
 
 pub fn fold_and_compute_product_sumcheck_polynomial<
-    F: PrimeCharacteristicRing + Copy + Send + Sync,
+    F: PrimeCharacteristicRing + Copy + Send + Sync + 'static,
     EF: Field,
-    EFPacking: Algebra<F> + From<EF> + Copy + Send + Sync,
+    EFPacking: Algebra<F> + From<EF> + Copy + Send + Sync + 'static,
 >(
     pol_0: &[F],         // evals
     pol_1: &[EFPacking], // weights
@@ -226,36 +222,28 @@ pub fn fold_and_compute_product_sumcheck_polynomial<
     let mut pol_0_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
     let mut pol_1_folded = unsafe { uninitialized_vec::<EFPacking>(n / 2) };
 
-    let num_elements = n;
-
-    // Extract the computation logic into a closure
     let process_element =
         |(p0_prev, p0_f): (((&F, &F), (&F, &F)), (&mut EFPacking, &mut EFPacking)),
          (p1_prev, p1_f): (
             ((&EFPacking, &EFPacking), (&EFPacking, &EFPacking)),
             (&mut EFPacking, &mut EFPacking),
         )| {
-            let pol_0_folded_left =
-                prev_folding_factor_packed * (*p0_prev.1.0 - *p0_prev.0.0) + *p0_prev.0.0;
-            let pol_0_folded_right =
-                prev_folding_factor_packed * (*p0_prev.1.1 - *p0_prev.0.1) + *p0_prev.0.1;
-            *p0_f.0 = pol_0_folded_left;
-            *p0_f.1 = pol_0_folded_right;
+            let diff_0 = *p0_prev.1.0 - *p0_prev.0.0;
+            let diff_1 = *p0_prev.1.1 - *p0_prev.0.1;
+            let x_0 = prev_folding_factor_packed * diff_0 + *p0_prev.0.0;
+            let x_1 = prev_folding_factor_packed * diff_1 + *p0_prev.0.1;
+            *p0_f.0 = x_0;
+            *p0_f.1 = x_1;
 
-            let pol_1_folded_left =
-                prev_folding_factor_packed * (*p1_prev.1.0 - *p1_prev.0.0) + *p1_prev.0.0;
-            let pol_1_folded_right =
-                prev_folding_factor_packed * (*p1_prev.1.1 - *p1_prev.0.1) + *p1_prev.0.1;
-            *p1_f.0 = pol_1_folded_left;
-            *p1_f.1 = pol_1_folded_right;
+            let y_0 = prev_folding_factor_packed * (*p1_prev.1.0 - *p1_prev.0.0) + *p1_prev.0.0;
+            let y_1 = prev_folding_factor_packed * (*p1_prev.1.1 - *p1_prev.0.1) + *p1_prev.0.1;
+            *p1_f.0 = y_0;
+            *p1_f.1 = y_1;
 
-            sumcheck_quadratic((
-                (&pol_0_folded_left, &pol_0_folded_right),
-                (&pol_1_folded_left, &pol_1_folded_right),
-            ))
+            sumcheck_quadratic(((&x_0, &x_1), (&y_0, &y_1)))
         };
 
-    let (c0_packed, c2_packed) = if num_elements < PARALLEL_THRESHOLD {
+    let (c0_packed, c2_packed) = if n < PARALLEL_THRESHOLD {
         zip_fold_2(pol_0, &mut pol_0_folded)
             .zip(zip_fold_2(pol_1, &mut pol_1_folded))
             .map(|(p0, p1)| process_element(p0, p1))
