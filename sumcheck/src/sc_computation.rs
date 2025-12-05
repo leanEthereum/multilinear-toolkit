@@ -2,7 +2,7 @@ use crate::*;
 use backend::*;
 use constraints_folder::*;
 use fiat_shamir::*;
-use p3_air::Air;
+use air::Air;
 use p3_field::ExtensionField;
 use p3_field::PackedFieldExtension;
 use p3_field::PrimeCharacteristicRing;
