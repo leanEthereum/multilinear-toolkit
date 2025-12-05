@@ -102,7 +102,7 @@ where
     }
 
     fn degree(&self) -> usize {
-        self.degree()
+        self.degree_air()
     }
 }
 

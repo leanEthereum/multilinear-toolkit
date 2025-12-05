@@ -7,7 +7,7 @@ use p3_field::PrimeCharacteristicRing;
 pub trait Air: Send + Sync + 'static {
     type ExtraData: Send + Sync + 'static;
 
-    fn degree(&self) -> usize;
+    fn degree_air(&self) -> usize;
 
     fn n_columns_f_air(&self) -> usize;
     fn n_columns_ef_air(&self) -> usize;
