@@ -1,5 +1,5 @@
-use fiat_shamir::*;
 use air::AirBuilder;
+use backend::PF;
 use p3_field::{ExtensionField, Field};
 
 use crate::AlphaPowers;

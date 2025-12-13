@@ -19,7 +19,6 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "backend"
 version = "0.3.0"
 dependencies = [
- "fiat-shamir",
  "itertools",
  "p3-field",
  "p3-koala-bear",
@@ -40,7 +39,7 @@ name = "constraints-folder"
 version = "0.3.0"
 dependencies = [
  "air",
- "fiat-shamir",
+ "backend",
  "p3-field",
 ]
 
@@ -78,11 +77,11 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 [[package]]
 name = "fiat-shamir"
 version = "0.1.0"
-source = "git+https://github.com/leanEthereum/fiat-shamir.git?branch=lean-vm-simple#9d4dc22f06cfa65f15bf5f1b07912a64c7feff0f"
+source = "git+https://github.com/leanEthereum/fiat-shamir.git?branch=lean-vm-simple#d3b1d401d791c2f7cac7f04e95ae443c90ef0ec4"
 dependencies = [
- "p3-challenger",
  "p3-field",
- "p3-koala-bear",
+ "p3-symmetric",
+ "rayon",
  "serde",
 ]
 
@@ -161,17 +160,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "p3-challenger"
-version = "0.3.0"
-dependencies = [
- "p3-field",
- "p3-maybe-rayon",
- "p3-symmetric",
- "p3-util 0.3.0",
- "tracing",
-]
 
 [[package]]
 name = "p3-dft"
@@ -294,7 +282,7 @@ dependencies = [
 [[package]]
 name = "p3-util"
 version = "0.3.0"
-source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-vm-simple#8135c00e94d11f592d9c005a91ee1c7309259e48"
+source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-vm-simple#4897086b6f460b969dc0baad5c4dff91a4eb1d67"
 dependencies = [
  "serde",
 ]
@@ -535,3 +523,7 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "p3-challenger"
+version = "0.3.0"

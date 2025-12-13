@@ -1,7 +1,8 @@
-use fiat_shamir::*;
 use p3_field::ExtensionField;
 
-use crate::{Mle, MleRef, MultilinearPoint, pack_extension, unpack_extension};
+use crate::{
+    EFPacking, Mle, MleRef, MultilinearPoint, PF, PFPacking, pack_extension, unpack_extension,
+};
 use p3_field::PackedValue;
 
 #[derive(Debug, Clone)]

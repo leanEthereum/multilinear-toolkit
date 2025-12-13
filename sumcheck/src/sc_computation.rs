@@ -1,8 +1,7 @@
 use crate::*;
+use air::Air;
 use backend::*;
 use constraints_folder::*;
-use fiat_shamir::*;
-use air::Air;
 use p3_field::ExtensionField;
 use p3_field::PackedFieldExtension;
 use p3_field::PrimeCharacteristicRing;

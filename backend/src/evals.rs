@@ -1,5 +1,5 @@
 use crate::*;
-use fiat_shamir::{EFPacking, PF};
+use crate::{EFPacking, PF};
 use itertools::Itertools;
 use p3_field::{ExtensionField, Field, PrimeCharacteristicRing, dot_product};
 use p3_util::log2_strict_usize;

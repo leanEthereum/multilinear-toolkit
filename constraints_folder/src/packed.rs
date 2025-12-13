@@ -1,5 +1,5 @@
-use fiat_shamir::*;
 use air::AirBuilder;
+use backend::{EFPacking, PF, PFPacking};
 use p3_field::ExtensionField;
 
 use crate::AlphaPowers;
@@ -15,7 +15,9 @@ pub struct ConstraintFolderPackedBase<'a, EF: ExtensionField<PF<EF>>, ExtraData:
     pub constraint_index: usize,
 }
 
-impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for ConstraintFolderPackedBase<'a, EF, ExtraData> {
+impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder
+    for ConstraintFolderPackedBase<'a, EF, ExtraData>
+{
     type F = PFPacking<EF>;
     type EF = EFPacking<EF>;
 
@@ -60,7 +62,11 @@ impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for 
 }
 
 #[derive(Debug)]
-pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> {
+pub struct ConstraintFolderPackedExtension<
+    'a,
+    EF: ExtensionField<PF<EF>>,
+    ExtraData: AlphaPowers<EF>,
+> {
     pub up_f: &'a [EFPacking<EF>],
     pub up_ef: &'a [EFPacking<EF>],
     pub down_f: &'a [EFPacking<EF>],
@@ -70,7 +76,9 @@ pub struct ConstraintFolderPackedExtension<'a, EF: ExtensionField<PF<EF>>, Extra
     pub constraint_index: usize,
 }
 
-impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder for ConstraintFolderPackedExtension<'a, EF, ExtraData> {
+impl<'a, EF: ExtensionField<PF<EF>>, ExtraData: AlphaPowers<EF>> AirBuilder
+    for ConstraintFolderPackedExtension<'a, EF, ExtraData>
+{
     type F = EFPacking<EF>;
     type EF = EFPacking<EF>;
 

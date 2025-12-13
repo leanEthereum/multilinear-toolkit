@@ -2,28 +2,22 @@ use backend::*;
 use fiat_shamir::*;
 use p3_field::*;
 
-pub fn sumcheck_verify<EF>(
-    verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
+pub fn sumcheck_verify<EF: ExtensionField<PF<EF>>>(
+    verifier_state: &mut impl FSVerifier<EF>,
     n_vars: usize,
     degree: usize,
-) -> Result<(EF, Evaluation<EF>), ProofError>
-where
-    EF: ExtensionField<PF<EF>>,
-{
+) -> Result<(EF, Evaluation<EF>), ProofError> {
     let sumation_sets = vec![vec![EF::ZERO, EF::ONE]; n_vars];
     let max_degree_per_vars = vec![degree; n_vars];
     verify_core(verifier_state, max_degree_per_vars, sumation_sets)
 }
 
-pub fn sumcheck_verify_with_univariate_skip<EF>(
-    verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
+pub fn sumcheck_verify_with_univariate_skip<EF: ExtensionField<PF<EF>>>(
+    verifier_state: &mut impl FSVerifier<EF>,
     degree: usize,
     n_vars: usize,
     skips: usize,
-) -> Result<(EF, Evaluation<EF>), ProofError>
-where
-    EF: ExtensionField<PF<EF>>,
-{
+) -> Result<(EF, Evaluation<EF>), ProofError> {
     let mut max_degree_per_vars = vec![degree * ((1 << skips) - 1)];
     max_degree_per_vars.extend(vec![degree; n_vars - skips]);
     let mut sumation_sets = vec![(0..1 << skips).map(EF::from_usize).collect::<Vec<_>>()];
@@ -31,14 +25,11 @@ where
     verify_core(verifier_state, max_degree_per_vars, sumation_sets)
 }
 
-fn verify_core<EF>(
-    verifier_state: &mut FSVerifier<EF, impl FSChallenger<EF>>,
+fn verify_core<EF: ExtensionField<PF<EF>>>(
+    verifier_state: &mut impl FSVerifier<EF>,
     max_degree_per_vars: Vec<usize>,
     sumation_sets: Vec<Vec<EF>>,
-) -> Result<(EF, Evaluation<EF>), ProofError>
-where
-    EF: ExtensionField<PF<EF>>,
-{
+) -> Result<(EF, Evaluation<EF>), ProofError> {
     let n_sumchecks = max_degree_per_vars.len();
     assert_eq!(n_sumchecks, sumation_sets.len(),);
 

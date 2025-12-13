@@ -1,5 +1,5 @@
 use crate::*;
-use fiat_shamir::{EFPacking, PF};
+use crate::{EFPacking, PF};
 use p3_field::*;
 use p3_util::{iter_array_chunks_padded, log2_strict_usize};
 use rayon::prelude::*;
@@ -1190,7 +1190,6 @@ pub fn parallel_inner_repeat<A: Copy + Send + Sync>(src: &[A], n: usize) -> Vec<
         res
     }
 }
-
 
 #[cfg(test)]
 mod tests {

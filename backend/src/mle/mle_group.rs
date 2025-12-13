@@ -1,5 +1,4 @@
 use crate::*;
-use fiat_shamir::*;
 use p3_field::ExtensionField;
 
 #[derive(Debug)]
