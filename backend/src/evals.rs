@@ -12,7 +12,11 @@ pub trait EvaluationsList<F: Field> {
     fn evaluate<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF;
     fn evaluate_sequential<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF;
     fn as_constant(&self) -> F;
-    fn evaluate_sparse<EF: ExtensionField<F>>(&self, points: &MultilinearPoint<EF>) -> EF;
+    fn evaluate_sparse<EF: ExtensionField<F>>(
+        &self,
+        selector: usize,
+        point: &MultilinearPoint<EF>,
+    ) -> EF;
 }
 
 impl<F: Field, EL: Borrow<[F]>> EvaluationsList<F> for EL {
@@ -37,31 +41,12 @@ impl<F: Field, EL: Borrow<[F]>> EvaluationsList<F> for EL {
         self.borrow()[0]
     }
 
-    fn evaluate_sparse<EF: ExtensionField<F>>(&self, point: &MultilinearPoint<EF>) -> EF {
-        assert_eq!(point.len(), self.num_variables());
-        if point.is_empty() {
-            return self.as_constant().into();
-        }
-
-        let initial_booleans = point
-            .iter()
-            .take_while(|&&x| x == EF::ZERO || x == EF::ONE)
-            .map(|&x| if x == EF::ZERO { 0 } else { 1 })
-            .collect::<Vec<_>>();
-
-        if initial_booleans.len() != point.len()
-            && [EF::ZERO, EF::ONE].contains(&point.last().unwrap())
-        {
-            tracing::warn!(
-                "TODO, evaluate_sparse has not yet been optimized when booleans not at the start"
-            );
-        }
-
-        let offset = initial_booleans.iter().fold(0, |acc, b| (acc << 1) | b);
-
-        (&self.borrow()[offset << (point.len() - initial_booleans.len())
-            ..((offset + 1) << (point.len() - initial_booleans.len()))])
-            .evaluate(&MultilinearPoint(point[initial_booleans.len()..].to_vec()))
+    fn evaluate_sparse<EF: ExtensionField<F>>(
+        &self,
+        selector: usize,
+        point: &MultilinearPoint<EF>,
+    ) -> EF {
+        (&self.borrow()[selector << point.len()..][..(1 << point.len())]).evaluate(point)
     }
 }
 
