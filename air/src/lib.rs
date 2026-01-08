@@ -1,8 +1,9 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
 use core::ops::{Add, Mul, Sub};
-
 use p3_field::PrimeCharacteristicRing;
+
+pub mod symbolic;
 
 pub trait Air: Send + Sync + 'static {
     type ExtraData: Send + Sync + 'static;
@@ -23,8 +24,16 @@ pub trait Air: Send + Sync + 'static {
 
     fn eval<AB: AirBuilder>(&self, builder: &mut AB, extra_data: &Self::ExtraData);
 
+    fn n_down_columns_f(&self) -> usize {
+        self.down_column_indexes_f().len()
+    }
+
+    fn n_down_columns_ef(&self) -> usize {
+        self.down_column_indexes_ef().len()
+    }
+
     fn total_n_down_columns_air(&self) -> usize {
-        self.down_column_indexes_f().len() + self.down_column_indexes_ef().len()
+        self.n_down_columns_f() + self.n_down_columns_ef()
     }
 }
 
