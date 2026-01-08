@@ -4,6 +4,7 @@ use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::rc::Rc;
 
 use p3_field::{Algebra, Field, InjectiveMonomial, PrimeCharacteristicRing};
 
@@ -57,8 +58,6 @@ where
     }
 }
 
-
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SymbolicOperation {
     Add,
@@ -67,15 +66,11 @@ pub enum SymbolicOperation {
     Neg,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SymbolicExpression<F> {
     Variable(SymbolicVariable<F>),
     Constant(F),
-    Operation {
-        op: SymbolicOperation,
-        args: Vec<SymbolicExpression<F>>,
-    },
+    Operation(Rc<(SymbolicOperation, Vec<Self>)>),
 }
 
 impl<F: Field> Default for SymbolicExpression<F> {
@@ -123,10 +118,7 @@ where
     fn add(self, rhs: T) -> Self {
         match (self, rhs.into()) {
             (Self::Constant(lhs), Self::Constant(rhs)) => Self::Constant(lhs + rhs),
-            (lhs, rhs) => Self::Operation {
-                op: SymbolicOperation::Add,
-                args: vec![lhs, rhs],
-            },
+            (lhs, rhs) => Self::Operation(Rc::new((SymbolicOperation::Add, vec![lhs, rhs]))),
         }
     }
 }
@@ -157,10 +149,7 @@ impl<F: Field, T: Into<Self>> Sub<T> for SymbolicExpression<F> {
     fn sub(self, rhs: T) -> Self {
         match (self, rhs.into()) {
             (Self::Constant(lhs), Self::Constant(rhs)) => Self::Constant(lhs - rhs),
-            (lhs, rhs) => Self::Operation {
-                op: SymbolicOperation::Sub,
-                args: vec![lhs, rhs],
-            },
+            (lhs, rhs) => Self::Operation(Rc::new((SymbolicOperation::Sub, vec![lhs, rhs]))),
         }
     }
 }
@@ -180,10 +169,7 @@ impl<F: Field> Neg for SymbolicExpression<F> {
     fn neg(self) -> Self {
         match self {
             Self::Constant(c) => Self::Constant(-c),
-            expr => Self::Operation {
-                op: SymbolicOperation::Neg,
-                args: vec![expr],
-            },
+            expr => Self::Operation(Rc::new((SymbolicOperation::Neg, vec![expr]))),
         }
     }
 }
@@ -194,10 +180,7 @@ impl<F: Field, T: Into<Self>> Mul<T> for SymbolicExpression<F> {
     fn mul(self, rhs: T) -> Self {
         match (self, rhs.into()) {
             (Self::Constant(lhs), Self::Constant(rhs)) => Self::Constant(lhs * rhs),
-            (lhs, rhs) => Self::Operation {
-                op: SymbolicOperation::Mul,
-                args: vec![lhs, rhs],
-            },
+            (lhs, rhs) => Self::Operation(Rc::new((SymbolicOperation::Mul, vec![lhs, rhs]))),
         }
     }
 }
