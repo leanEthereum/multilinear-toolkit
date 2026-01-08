@@ -71,4 +71,10 @@ pub trait AirBuilder: Sized {
     fn assert_bool_ef(&mut self, x: Self::EF) {
         self.assert_zero_ef(x.bool_check());
     }
+
+    /// useful to build the recursion program
+    #[inline(always)]
+    fn declare_values(&mut self, values: &[Self::F]) {
+        let _ = values;
+    }
 }

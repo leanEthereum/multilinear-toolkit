@@ -209,6 +209,7 @@ struct SymbolicAirBuilder<F: Field> {
     up_ef: Vec<SymbolicExpression<F>>,
     down_ef: Vec<SymbolicExpression<F>>,
     constraints: Vec<SymbolicExpression<F>>,
+    bus_data_values: Option<Vec<SymbolicExpression<F>>>,
 }
 
 impl<F: Field> SymbolicAirBuilder<F> {
@@ -245,6 +246,7 @@ impl<F: Field> SymbolicAirBuilder<F> {
             up_ef,
             down_ef,
             constraints: Vec::new(),
+            bus_data_values: None,
         }
     }
 
@@ -284,9 +286,15 @@ impl<F: Field> AirBuilder for SymbolicAirBuilder<F> {
     fn eval_virtual_column(&mut self, _: Self::EF) {
         unimplemented!()
     }
+
+    fn declare_values(&mut self, values: &[Self::F]) {
+        self.bus_data_values = Some(values.to_vec());
+    }
 }
 
-pub fn get_symbolic_constraints<F: Field, A: Air>(air: &A) -> Vec<SymbolicExpression<F>>
+pub fn get_symbolic_constraints_and_bus_data_values<F: Field, A: Air>(
+    air: &A,
+) -> (Vec<SymbolicExpression<F>>, Vec<SymbolicExpression<F>>)
 where
     A::ExtraData: Default,
 {
@@ -297,5 +305,5 @@ where
         air.n_down_columns_ef(),
     );
     air.eval(&mut builder, &Default::default());
-    builder.constraints()
+    (builder.constraints(), builder.bus_data_values.unwrap())
 }
