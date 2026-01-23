@@ -1,10 +1,9 @@
 use crate::*;
-use fiat_shamir::*;
 use p3_field::ExtensionField;
 use p3_field::PackedValue;
 use p3_util::log2_strict_usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum MleRef<'a, EF: ExtensionField<PF<EF>>> {
     Base(&'a [PF<EF>]),
     Extension(&'a [EF]),
@@ -28,6 +27,15 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
             res *= packing_width::<EF>();
         }
         res
+    }
+
+    pub fn soft_clone(&self) -> MleRef<'a, EF> {
+        match self {
+            Self::Base(v) => MleRef::Base(v),
+            Self::Extension(v) => MleRef::Extension(v),
+            Self::BasePacked(v) => MleRef::BasePacked(v),
+            Self::ExtensionPacked(v) => MleRef::ExtensionPacked(v),
+        }
     }
 
     pub fn n_vars(&self) -> usize {
@@ -82,8 +90,8 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
         match self {
             Self::Base(v) => Mle::Ref(MleRef::BasePacked(PFPacking::<EF>::pack_slice(v))),
             Self::Extension(v) => Mle::Owned(MleOwned::ExtensionPacked(pack_extension(v))),
-            Self::BasePacked(_) => Mle::Ref(self.clone()),
-            Self::ExtensionPacked(_) => Mle::Ref(self.clone()),
+            Self::BasePacked(_) => Mle::Ref(self.soft_clone()),
+            Self::ExtensionPacked(_) => Mle::Ref(self.soft_clone()),
         }
     }
 
@@ -100,7 +108,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> MleRef<'a, EF> {
         if cond {
             self.pack()
         } else {
-            Mle::Ref(self.clone())
+            Mle::Ref(self.soft_clone())
         }
     }
 

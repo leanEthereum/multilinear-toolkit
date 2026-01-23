@@ -16,7 +16,7 @@ pub fn sumcheck_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     extra_data: &SC::ExtraData,
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
-    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    prover_state: &mut impl FSProver<EF>,
     sum: EF,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
@@ -50,7 +50,7 @@ pub fn sumcheck_fold_and_prove<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     extra_data: &SC::ExtraData,
     eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     is_zerofier: bool,
-    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    prover_state: &mut impl FSProver<EF>,
     sum: EF,
     store_intermediate_foldings: bool,
 ) -> (MultilinearPoint<EF>, Vec<EF>, EF)
@@ -113,7 +113,7 @@ pub fn sumcheck_prove_many_rounds<'a, EF, SC, M: Into<MleGroup<'a, EF>>>(
     extra_data: &SC::ExtraData,
     mut eq_factor: Option<(Vec<EF>, Option<MleOwned<EF>>)>, // (a, b, c ...), eq_poly(b, c, ...)
     mut is_zerofier: bool,
-    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    prover_state: &mut impl FSProver<EF>,
     mut sum: EF,
     mut missing_mul_factors: Option<EF>,
     n_rounds: usize,
@@ -231,7 +231,7 @@ fn compute_and_send_polynomial<'a, EF, SC>(
     eq_factor: &Option<(Vec<EF>, MleOwned<EF>)>, // (a, b, c ...), eq_poly(b, c, ...)
     extra_data: &SC::ExtraData,
     is_zerofier: bool,
-    prover_state: &mut FSProver<EF, impl FSChallenger<EF>>,
+    prover_state: &mut impl FSProver<EF>,
     sum: EF,
     missing_mul_factor: Option<EF>,
 ) -> DensePolynomial<EF>

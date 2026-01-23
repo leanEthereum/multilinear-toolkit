@@ -1,13 +1,20 @@
 use crate::*;
-use fiat_shamir::*;
 use p3_field::ExtensionField;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Mle<'a, EF: ExtensionField<PF<EF>>> {
     Owned(MleOwned<EF>),
     Ref(MleRef<'a, EF>),
 }
 
+impl <EF: ExtensionField<PF<EF>>> Clone for Mle<'_, EF> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Owned(o) => Self::Owned(o.clone()),
+            Self::Ref(r) => Self::Ref(r.soft_clone()),
+        }
+    }
+}
 impl<EF: ExtensionField<PF<EF>>> From<MleOwned<EF>> for Mle<'_, EF> {
     fn from(value: MleOwned<EF>) -> Self {
         Self::Owned(value)
@@ -24,7 +31,7 @@ impl<'a, EF: ExtensionField<PF<EF>>> Mle<'a, EF> {
     pub fn by_ref(&'a self) -> MleRef<'a, EF> {
         match self {
             Self::Owned(owned) => owned.by_ref(),
-            Self::Ref(r) => r.clone(),
+            Self::Ref(r) => r.soft_clone(),
         }
     }
 

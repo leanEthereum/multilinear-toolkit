@@ -7,7 +7,7 @@ use backend::{
     DensePolynomial, PARALLEL_THRESHOLD, iter_split_2, par_iter_split_2, par_zip_fold_2,
     transmute_array, uninitialized_vec, zip_fold_2,
 };
-use fiat_shamir::{EFPacking, PF, PFPacking};
+use backend::{EFPacking, PF, PFPacking};
 use p3_field::{Algebra, ExtensionField, Field};
 use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::*;

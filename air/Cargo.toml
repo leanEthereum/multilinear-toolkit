@@ -1,9 +1,7 @@
 [package]
-name = "constraints-folder"
+name = "air"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 p3-field.workspace = true
-air.workspace = true
-backend.workspace = true

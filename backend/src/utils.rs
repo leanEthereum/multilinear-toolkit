@@ -4,13 +4,14 @@ use std::{
     ops::{Add, Range, Sub},
 };
 
-use fiat_shamir::*;
 use p3_field::*;
 use rayon::{
     iter::Zip,
     prelude::*,
     slice::{Iter, IterMut},
 };
+
+use crate::{EFPacking, PF, PFPacking};
 
 pub const PARALLEL_THRESHOLD: usize = 1 << 9;
 

@@ -22,7 +22,7 @@ pub trait AlphaPowersMut<EF> {
     fn alpha_powers_mut(&mut self) -> &mut Vec<EF>;
 }
 
-impl <EF: Field> AlphaPowersMut<EF> for Vec<EF> {
+impl<EF: Field> AlphaPowersMut<EF> for Vec<EF> {
     #[inline(always)]
     fn alpha_powers_mut(&mut self) -> &mut Vec<EF> {
         self

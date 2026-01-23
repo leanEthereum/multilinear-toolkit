@@ -1,8 +1,8 @@
 use std::ops::Mul;
 
 use backend::{
-    DensePolynomial, MleGroupOwned, MleOwned, MleRef, MultilinearPoint, PARALLEL_THRESHOLD,
-    par_zip_fold_2, uninitialized_vec, zip_fold_2,
+    DensePolynomial, EFPacking, MleGroupOwned, MleOwned, MleRef, MultilinearPoint,
+    PARALLEL_THRESHOLD, PF, PFPacking, par_zip_fold_2, uninitialized_vec, zip_fold_2,
 };
 use fiat_shamir::*;
 use p3_field::*;
@@ -68,7 +68,7 @@ pub fn mul_many_const<const N: usize, A: Mul<Output = A> + Copy>(args: &[A]) -> 
 pub fn run_product_sumcheck<EF: ExtensionField<PF<EF>>>(
     pol_a: &MleRef<'_, EF>, // evals
     pol_b: &MleRef<'_, EF>, // weights
-    prover_state: &mut ProverState<PF<EF>, EF, impl FSChallenger<EF>>,
+    prover_state: &mut impl FSProver<EF>,
     mut sum: EF,
     n_rounds: usize,
 ) -> (MultilinearPoint<EF>, EF, MleOwned<EF>, MleOwned<EF>) {

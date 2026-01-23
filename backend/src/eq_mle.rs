@@ -1,5 +1,5 @@
 use crate::*;
-use fiat_shamir::{EFPacking, PF};
+use crate::{EFPacking, PF};
 use p3_field::*;
 use p3_util::{iter_array_chunks_padded, log2_strict_usize};
 use rayon::prelude::*;
@@ -40,113 +40,44 @@ pub fn eval_eq_packed_scaled<F: ExtensionField<PF<F>>>(eval: &[F], scalar: F) ->
     out
 }
 
-#[inline]
-pub fn compute_sparse_eval_eq<F: ExtensionField<PF<F>>>(eval: &[F], out: &mut [F], scalar: F) {
-    let boolean_starts = eval
-        .iter()
-        .take_while(|&&x| x.is_zero() || x.is_one())
-        .map(|&x| x.is_one())
-        .collect::<Vec<_>>();
-    let starts_big_endian = boolean_starts
-        .iter()
-        .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
-
-    if boolean_starts.len() == eval.len() {
-        // full of booleans
-        out[starts_big_endian] += scalar;
+pub fn compute_sparse_eval_eq<F: ExtensionField<PF<F>>>(
+    selector: usize,
+    eval: &[F],
+    out: &mut [F],
+    scalar: F,
+) {
+    if eval.is_empty() {
+        out[selector] += scalar;
         return;
     }
 
-    let mut boolean_ends = eval
-        .iter()
-        .rev()
-        .take_while(|&&x| x.is_zero() || x.is_one())
-        .map(|&x| x.is_one())
-        .collect::<Vec<_>>();
-    boolean_ends.reverse();
-    let ends_big_endian = boolean_ends
-        .iter()
-        .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
-
-    let eval = &eval[boolean_starts.len()..];
     let new_out_size = 1 << eval.len();
-    let out = &mut out[starts_big_endian * new_out_size..(starts_big_endian + 1) * new_out_size];
+    let out = &mut out[selector * new_out_size..][..new_out_size];
 
-    if boolean_ends.len() == 0 {
-        compute_eval_eq::<PF<F>, F, true>(eval, out, scalar);
-    } else {
-        let mut buff = unsafe { uninitialized_vec::<F>(out.len() >> boolean_ends.len()) };
-        compute_eval_eq::<PF<F>, F, false>(
-            &eval[..eval.len() - boolean_ends.len()],
-            &mut buff,
-            scalar,
-        );
-        if buff.len() < PARALLEL_THRESHOLD {
-            out[ends_big_endian..]
-                .iter_mut()
-                .step_by(1 << boolean_ends.len())
-                .zip(buff.into_iter())
-                .for_each(|(o, v)| {
-                    *o += v;
-                });
-        } else {
-            out[ends_big_endian..]
-                .par_iter_mut()
-                .step_by(1 << boolean_ends.len())
-                .zip(buff.into_par_iter())
-                .for_each(|(o, v)| {
-                    *o += v;
-                });
-        }
-    }
+    compute_eval_eq::<PF<F>, F, true>(eval, out, scalar);
 }
 
-#[inline]
-pub fn compute_sparse_eval_eq_packed<EF>(eval: &[EF], out: &mut [EFPacking<EF>], scalar: EF)
-where
+pub fn compute_sparse_eval_eq_packed<EF>(
+    selector: usize,
+    eval: &[EF],
+    out: &mut [EFPacking<EF>],
+    scalar: EF,
+) where
     EF: ExtensionField<PF<EF>>,
 {
     let log_packing = packing_log_width::<EF>();
-
-    let boolean_starts = eval
-        .iter()
-        .take_while(|&&x| x.is_zero() || x.is_one())
-        .map(|&x| x.is_one())
-        .collect::<Vec<_>>();
-    let starts_big_endian = boolean_starts
-        .iter()
-        .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
-
-    if boolean_starts.len() == eval.len() {
-        // full of booleans
-        let packed = &mut out[starts_big_endian >> log_packing];
-        let index_in_packed = starts_big_endian & ((1 << log_packing) - 1);
+    if eval.len() < log_packing {
+        let shift = log_packing - eval.len();
+        let packed = &mut out[selector >> shift];
         let mut unpacked: Vec<EF> = unpack_extension(&[*packed]);
-        unpacked[index_in_packed] += scalar;
+        compute_sparse_eval_eq::<EF>(selector & ((1 << shift) - 1), eval, &mut unpacked, scalar);
         *packed = pack_extension(&unpacked)[0];
         return;
     }
 
-    let mut boolean_ends = eval
-        .iter()
-        .rev()
-        .take_while(|&&x| x.is_zero() || x.is_one())
-        .map(|&x| x.is_one())
-        .collect::<Vec<_>>();
-    boolean_ends.reverse();
-    // let ends_big_endian = boolean_ends
-    //     .iter()
-    //     .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
-
-    let eval = &eval[boolean_starts.len()..];
     let new_out_size = 1 << (eval.len() - log_packing);
-    let out = &mut out[starts_big_endian * new_out_size..(starts_big_endian + 1) * new_out_size];
-
-    if boolean_ends.len() == 0 {
-        compute_eval_eq_packed::<EF, true>(eval, out, scalar);
-    } else {
-        unimplemented!()
-    }
+    let out = &mut out[selector * new_out_size..][..new_out_size];
+    compute_eval_eq_packed::<EF, true>(eval, out, scalar);
 }
 
 /// Computes the equality polynomial evaluations efficiently.
@@ -1191,7 +1122,6 @@ pub fn parallel_inner_repeat<A: Copy + Send + Sync>(src: &[A], n: usize) -> Vec<
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
@@ -1216,31 +1146,25 @@ mod tests {
             F::new(1),
             F::new(854),
             F::new(2),
-            F::ONE,
-            F::ZERO,
-            F::ONE,
-            F::ONE,
-            F::ONE,
-            F::ZERO,
         ];
         let scalar = F::new(789);
         let mut out_structured = F::zero_vec(1 << eval.len());
         let mut out_unstructured = F::zero_vec(1 << eval.len());
-        compute_sparse_eval_eq(&eval, &mut out_structured, scalar);
+        compute_sparse_eval_eq(6, &eval[4..], &mut out_structured, scalar);
         compute_eval_eq::<F, F, true>(&eval, &mut out_unstructured, scalar);
         assert_eq!(out_structured, out_unstructured);
     }
 
     #[test]
     fn test_compute_sparse_eval_packed() {
-        let n_vars: usize = 22;
+        let n_vars: usize = 16;
         assert!(n_vars.is_multiple_of(2));
         let starts = vec![
-            vec![EF::ZERO, EF::ONE, EF::ONE, EF::ZERO],
+            vec![EF::ZERO, EF::ONE, EF::ONE, EF::ZERO, EF::ZERO],
             vec![],
             vec![EF::ZERO, EF::ZERO, EF::ZERO, EF::ZERO],
             vec![EF::ONE, EF::ONE, EF::ONE, EF::ONE],
-            vec![EF::ONE; n_vars],
+            vec![EF::ONE; n_vars - 1],
             vec![EF::ZERO; n_vars],
             [EF::ZERO, EF::ONE].repeat(n_vars / 2),
             [EF::ONE, EF::ZERO].repeat(n_vars / 2),
@@ -1254,8 +1178,17 @@ mod tests {
             let mut out_no_packing = EF::zero_vec(1 << n_vars);
             let mut out_packed =
                 EFPacking::<EF>::zero_vec(1 << (n_vars - packing_log_width::<EF>()));
-            compute_sparse_eval_eq(&point, &mut out_no_packing, scalar);
-            compute_sparse_eval_eq_packed(&point, &mut out_packed, scalar);
+            compute_eval_eq::<F, EF, true>(&point, &mut out_no_packing, scalar);
+            let boolean_starts = point
+                .iter()
+                .take_while(|&&x| x.is_zero() || x.is_one())
+                .map(|&x| x.is_one())
+                .collect::<Vec<_>>();
+            let starts_big_endian = boolean_starts
+                .iter()
+                .fold(0, |acc, &bit| (acc << 1) | (bit as usize));
+            let point = &point[boolean_starts.len()..];
+            compute_sparse_eval_eq_packed(starts_big_endian, &point, &mut out_packed, scalar);
             let unpacked: Vec<EF> = unpack_extension(&out_packed);
             assert_eq!(out_no_packing, unpacked);
         }
