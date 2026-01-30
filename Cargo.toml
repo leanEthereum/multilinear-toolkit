@@ -9,7 +9,7 @@ edition = "2024"
 
 [workspace]
 resolver = "2"
-members = ["backend", "constraints_folder", "sumcheck", "air", "fiat-shamir"]
+members = ["backend", "constraints_folder", "sumcheck", "air", "fiat-shamir", "whir"]
 
 [workspace.dependencies]
 p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
@@ -18,12 +18,20 @@ p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lea
 p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 p3-symmetric = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 p3-poseidon2 = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-merkle-tree = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-dft = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-commit = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 
 rayon = "*"
 rand = "*"
 itertools = "*"
 tracing = "*"
 serde  = { version = "1.0.227", features = ["derive"] }
+tracing-forest = "0.2.0"
+tracing-subscriber = { version = "0.3.17", default-features = false, features = [
+    "alloc",
+    "env-filter",
+] }
 
 # Local dependencies
 backend = { path = "backend" }
@@ -31,6 +39,7 @@ constraints-folder = { path = "constraints_folder" }
 sumcheck = { path = "sumcheck" }
 air = { path = "air" }
 fiat-shamir = { path = "fiat-shamir" }
+whir = { path = "whir" }
 
 [dependencies]
 backend.workspace = true

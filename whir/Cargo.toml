@@ -1,0 +1,26 @@
+[package]
+name = "whir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+p3-field.workspace = true
+p3-koala-bear.workspace = true
+p3-merkle-tree.workspace = true
+p3-symmetric.workspace = true
+p3-matrix.workspace = true
+p3-util.workspace = true
+p3-dft.workspace = true
+p3-commit.workspace = true
+
+itertools.workspace = true
+rayon.workspace = true
+rand.workspace = true
+backend.workspace = true
+sumcheck.workspace = true
+fiat-shamir.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-forest.workspace = true
+tracing-subscriber.workspace = true
