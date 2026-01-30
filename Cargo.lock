@@ -75,10 +75,11 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "fiat-shamir"
-version = "0.1.0"
-source = "git+https://github.com/leanEthereum/fiat-shamir.git#493be07bdd8669a816d28c3befc08bc3e68e590a"
+version = "0.3.0"
 dependencies = [
  "p3-field",
+ "p3-koala-bear",
+ "p3-poseidon2",
  "p3-symmetric",
  "rayon",
  "serde",
