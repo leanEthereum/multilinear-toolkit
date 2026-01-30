@@ -13,10 +13,10 @@ members = ["backend", "constraints_folder", "sumcheck", "air"]
 
 [workspace.dependencies]
 fiat-shamir = { git = "https://github.com/leanEthereum/fiat-shamir.git", branch = "devnet2" }
-p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-vm-simple" }
-p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-vm-simple" }
-p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-vm-simple" }
-p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-vm-simple" }
+p3-util = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "devnet2" }
+p3-field = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "devnet2" }
+p3-matrix = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "devnet2" }
+p3-koala-bear = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "devnet2" }
 
 rayon = "*"
 rand = "*"
