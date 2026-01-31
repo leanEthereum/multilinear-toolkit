@@ -56,3 +56,4 @@ rayon.workspace = true
 whir.workspace = true
 tracing.workspace = true
 fiat-shamir.workspace = true
+p3-maybe-rayon.workspace = true

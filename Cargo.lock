@@ -157,6 +157,7 @@ dependencies = [
  "constraints-folder",
  "fiat-shamir",
  "p3-field",
+ "p3-maybe-rayon",
  "p3-util",
  "rayon",
  "sumcheck",
@@ -296,6 +297,9 @@ dependencies = [
 name = "p3-maybe-rayon"
 version = "0.3.0"
 source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-multisig#87bad263fb05630a27ba2d72ac1509d4b9fe91b1"
+dependencies = [
+ "rayon",
+]
 
 [[package]]
 name = "p3-mds"
