@@ -375,6 +375,7 @@ name = "p3-util"
 version = "0.3.0"
 source = "git+https://github.com/TomWambsgans/Plonky3.git?branch=lean-multisig#87bad263fb05630a27ba2d72ac1509d4b9fe91b1"
 dependencies = [
+ "rayon",
  "serde",
 ]
 
