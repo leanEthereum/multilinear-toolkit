@@ -18,41 +18,45 @@ type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
 #[test]
-fn run_whir_base() {
-    run_whir::<F>();
+fn test_run_whir() {
+    println!("BASE FIELD");
+    run_whir::<F>(24, 7, 2, 5, false);
+
+    println!("\nEXTENSION FIELD");
+    run_whir::<EF>(17, 4, 3, 1, false);
 }
 
-#[test]
-fn run_whir_extension() {
-    run_whir::<EF>();
-}
-
-fn run_whir<PolField: ExtensionField<F> + TwoAdicField>()
-where
+fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
+    num_variables: usize,
+    first_folding_factor: usize,
+    starting_log_inv_rate: usize,
+    rs_domain_initial_reduction_factor: usize,
+    tracing: bool,
+) where
     EF: ExtensionField<PolField>,
 {
-    let env_filter: EnvFilter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
+    if tracing {
+        let env_filter: EnvFilter = EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env_lossy();
 
-    let _ = Registry::default()
-        .with(env_filter)
-        .with(ForestLayer::default())
-        .try_init();
-
+        let _ = Registry::default()
+            .with(env_filter)
+            .with(ForestLayer::default())
+            .try_init();
+    }
     let poseidon16 = default_koalabear_poseidon2_16();
 
-    let num_variables = 17;
     let num_coeffs = 1 << num_variables;
 
     let params = WhirConfigBuilder {
         security_level: 123,
         max_num_variables_to_send_coeffs: 6,
         pow_bits: 16,
-        folding_factor: FoldingFactor::new(4, 4),
+        folding_factor: FoldingFactor::new(first_folding_factor, 4),
         soundness_type: SecurityAssumption::JohnsonBound,
-        starting_log_inv_rate: 3,
-        rs_domain_initial_reduction_factor: 1,
+        starting_log_inv_rate,
+        rs_domain_initial_reduction_factor,
     };
     let params = WhirConfig::new(&params, num_variables);
 
