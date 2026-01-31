@@ -7,7 +7,7 @@ pub enum Mle<'a, EF: ExtensionField<PF<EF>>> {
     Ref(MleRef<'a, EF>),
 }
 
-impl <EF: ExtensionField<PF<EF>>> Clone for Mle<'_, EF> {
+impl<EF: ExtensionField<PF<EF>>> Clone for Mle<'_, EF> {
     fn clone(&self) -> Self {
         match self {
             Self::Owned(o) => Self::Owned(o.clone()),

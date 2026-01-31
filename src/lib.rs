@@ -3,6 +3,7 @@ pub mod prelude {
     pub use backend::*;
     pub use constraints_folder::*;
     pub use sumcheck::*;
+    pub use whir::*;
 
     pub use fiat_shamir::*;
 
