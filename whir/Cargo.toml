@@ -20,6 +20,7 @@ backend.workspace = true
 sumcheck.workspace = true
 fiat-shamir.workspace = true
 tracing.workspace = true
+p3-maybe-rayon.workspace = true
 
 [dev-dependencies]
 tracing-forest.workspace = true

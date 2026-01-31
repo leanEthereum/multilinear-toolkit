@@ -8,19 +8,18 @@ use rand::{Rng, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt, util::SubscriberInitExt};
 use whir::*;
-// use tracing_forest::{ForestLayer, util::LevelFilter};
-// use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt, util::SubscriberInitExt};
-
-// Commit A in F, B in EF
-// TODO there is a big overhead embedding overhead in the sumcheck
 
 type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
+/*
+RUSTFLAGS='-C target-cpu=native' cargo test --release --package whir --test run_whir -- test_run_whir --exact --nocapture 
+*/
+
 #[test]
 fn test_run_whir() {
     println!("BASE FIELD");
-    run_whir::<F>(24, 7, 2, 5, false);
+    run_whir::<F>(25, 7, 2, 5, false);
 
     println!("\nEXTENSION FIELD");
     run_whir::<EF>(17, 4, 3, 1, false);
