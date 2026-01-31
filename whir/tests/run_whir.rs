@@ -2,8 +2,7 @@ use std::{any::TypeId, time::Instant};
 
 use backend::*;
 use fiat_shamir::{ProverState, VerifierState};
-use p3_field::Field;
-use p3_field::TwoAdicField;
+use p3_field::{ExtensionField, Field, TwoAdicField};
 use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB, default_koalabear_poseidon2_16};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
@@ -15,25 +14,36 @@ use whir::*;
 // Commit A in F, B in EF
 // TODO there is a big overhead embedding overhead in the sumcheck
 
-type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
 #[test]
-fn run_whir() {
+fn run_whir_base() {
+    run_whir::<KoalaBear>();
+}
+
+#[test]
+fn run_whir_extension() {
+    run_whir::<EF>();
+}
+
+fn run_whir<BaseField: ExtensionField<KoalaBear>>()
+where
+    EF: ExtensionField<BaseField>,
+{
     let env_filter: EnvFilter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
 
-    Registry::default()
+    let _ = Registry::default()
         .with(env_filter)
         .with(ForestLayer::default())
-        .init();
+        .try_init();
 
     let poseidon16 = default_koalabear_poseidon2_16();
 
     type PolField = EF;
 
-    let num_variables = 17;
+    let num_variables = 20;
     let num_coeffs = 1 << num_variables;
 
     let params = WhirConfigBuilder {
@@ -42,7 +52,7 @@ fn run_whir() {
         pow_bits: 17,
         folding_factor: FoldingFactor::new(4, 4),
         soundness_type: SecurityAssumption::JohnsonBound,
-        starting_log_inv_rate: 3,
+        starting_log_inv_rate: 2,
         rs_domain_initial_reduction_factor: 1,
     };
     let params = WhirConfig::new(&params, num_variables);
@@ -97,7 +107,7 @@ fn run_whir() {
 
     let mut prover_state = ProverState::new(poseidon16.clone());
 
-    precompute_dft_twiddles::<F>(1 << F::TWO_ADICITY);
+    precompute_dft_twiddles::<KoalaBear>(1 << KoalaBear::TWO_ADICITY);
 
     let polynomial: MleOwned<EF> = if TypeId::of::<PolField>() == TypeId::of::<EF>() {
         MleOwned::Extension(unsafe { std::mem::transmute(polynomial) })
@@ -117,10 +127,13 @@ fn run_whir() {
         witness_clone,
         &polynomial.by_ref(),
     );
+    let pruned_proof = prover_state.into_pruned_proof();
     let opening_time_single = time.elapsed();
-    let proof_size_single = prover_state.proof_size_fe() as f64 * F::bits() as f64 / 8.0;
 
-    let mut verifier_state = VerifierState::new(prover_state.into_proof(), poseidon16.clone());
+    let proof_size_single = pruned_proof.proof_size_fe() as f64 * KoalaBear::bits() as f64 / 8.0;
+
+    let transcript = pruned_proof.restore().unwrap().raw_proof();
+    let mut verifier_state = VerifierState::new(transcript, poseidon16.clone());
 
     let parsed_commitment = params
         .parse_commitment::<PolField>(&mut verifier_state)

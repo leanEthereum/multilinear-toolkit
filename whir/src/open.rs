@@ -1,5 +1,5 @@
 use backend::*;
-use fiat_shamir::{FSProver, ProofResult};
+use fiat_shamir::{FSProver, MerklePath, ProofResult};
 use p3_field::PrimeCharacteristicRing;
 use p3_field::{ExtensionField, Field, TwoAdicField};
 use p3_util::log2_strict_usize;
@@ -236,33 +236,36 @@ where
         );
 
         {
-            let mut answers = Vec::<MleOwned<EF>>::with_capacity(final_challenge_indexes.len());
-            let mut merkle_proofs = Vec::with_capacity(final_challenge_indexes.len());
+            let mut paths_base: Vec<MerklePath<PF<EF>, PF<EF>>> = Vec::new();
+            let mut paths_ext: Vec<MerklePath<EF, PF<EF>>> = Vec::new();
 
             for challenge in final_challenge_indexes {
-                let (answer, proof) = round_state.merkle_prover_data.open(challenge);
-                answers.push(answer);
-                merkle_proofs.push(proof);
-            }
+                let (answer, sibling_hashes) = round_state.merkle_prover_data.open(challenge);
 
-            // merkle leaves
-            for answer in &answers {
                 match answer {
-                    MleOwned::Base(answer) => {
-                        prover_state.hint_base_scalars(answer);
+                    MleOwned::Base(leaf) => {
+                        paths_base.push(MerklePath {
+                            leaf_data: leaf,
+                            sibling_hashes,
+                            leaf_index: challenge,
+                        });
                     }
-                    MleOwned::Extension(answer) => {
-                        prover_state.hint_extension_scalars(answer);
+                    MleOwned::Extension(leaf) => {
+                        paths_ext.push(MerklePath {
+                            leaf_data: leaf,
+                            sibling_hashes,
+                            leaf_index: challenge,
+                        });
                     }
                     _ => unreachable!(),
                 }
             }
 
-            // merkle authentication proof
-            for merkle_proof in &merkle_proofs {
-                for digest in merkle_proof {
-                    prover_state.hint_base_scalars(digest);
-                }
+            if !paths_base.is_empty() {
+                prover_state.hint_merkle_paths_base(paths_base);
+            }
+            if !paths_ext.is_empty() {
+                prover_state.hint_merkle_paths_extension(paths_ext);
             }
         }
 
@@ -327,32 +330,38 @@ fn open_merkle_tree_at_challenges<EF: ExtensionField<PF<EF>>>(
     prover_state: &mut impl FSProver<EF>,
     stir_challenges_indexes: &[usize],
 ) -> Vec<MleOwned<EF>> {
-    let mut merkle_proofs = Vec::new();
     let mut answers = Vec::new();
-    for challenge in stir_challenges_indexes {
-        let (answer, proof) = merkle_tree.open(*challenge);
-        answers.push(answer);
-        merkle_proofs.push(proof);
-    }
+    let mut paths_base: Vec<MerklePath<PF<EF>, PF<EF>>> = Vec::new();
+    let mut paths_ext: Vec<MerklePath<EF, PF<EF>>> = Vec::new();
 
-    // merkle leaves
-    for answer in &answers {
-        match answer {
-            MleOwned::Base(answer) => {
-                prover_state.hint_base_scalars(answer);
+    for &challenge in stir_challenges_indexes {
+        let (answer, sibling_hashes) = merkle_tree.open(challenge);
+
+        match &answer {
+            MleOwned::Base(leaf) => {
+                paths_base.push(MerklePath {
+                    leaf_data: leaf.clone(),
+                    sibling_hashes,
+                    leaf_index: challenge,
+                });
             }
-            MleOwned::Extension(answer) => {
-                prover_state.hint_extension_scalars(answer);
+            MleOwned::Extension(leaf) => {
+                paths_ext.push(MerklePath {
+                    leaf_data: leaf.clone(),
+                    sibling_hashes,
+                    leaf_index: challenge,
+                });
             }
             _ => unreachable!(),
         }
+        answers.push(answer);
     }
 
-    // merkle authentication proof
-    for merkle_proof in &merkle_proofs {
-        for digest in merkle_proof {
-            prover_state.hint_base_scalars(digest);
-        }
+    if !paths_base.is_empty() {
+        prover_state.hint_merkle_paths_base(paths_base);
+    }
+    if !paths_ext.is_empty() {
+        prover_state.hint_merkle_paths_extension(paths_ext);
     }
 
     answers

@@ -36,9 +36,9 @@ type MerkleTreeMmcsKoalaBear = MerkleTreeMmcs<
 type KoalaBearExtensionMmcs<EF> = ExtensionMmcs<KoalaBear, EF, MerkleTreeMmcsKoalaBear>;
 
 fn get_koala_bear_mmcs() -> MerkleTreeMmcsKoalaBear {
-    let merkle_hash = MerkleHashKoalaBear::new(default_koalabear_poseidon2_16());
+    let merkle_leaf_hash = MerkleHashKoalaBear::new(default_koalabear_poseidon2_16());
     let merkle_compress = MerkleCompressKoalaBear::new(default_koalabear_poseidon2_16());
-    MerkleTreeMmcsKoalaBear::new(merkle_hash, merkle_compress)
+    MerkleTreeMmcsKoalaBear::new(merkle_leaf_hash, merkle_compress)
 }
 
 fn get_koala_bear_extension_mmcs<EF: ExtensionField<KoalaBear>>() -> KoalaBearExtensionMmcs<EF> {

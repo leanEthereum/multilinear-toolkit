@@ -9,14 +9,12 @@ use p3_field::integers::QuotientMap;
 use p3_field::{ExtensionField, PrimeField64};
 use p3_symmetric::CryptographicPermutation;
 use rayon::prelude::*;
-use std::{fmt::Debug, iter::repeat_n, sync::Mutex};
+use std::{fmt::Debug, sync::Mutex};
 
 #[derive(Debug)]
 pub struct ProverState<EF: ExtensionField<PF<EF>>, P> {
     challenger: DuplexChallenger<PF<EF>, P>,
-    transcript: Vec<PF<EF>>,
-    n_zeros: usize,
-    _extension_field: std::marker::PhantomData<EF>,
+    transcript: Proof<PF<EF>>,
 }
 
 impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> ProverState<EF, P>
@@ -28,22 +26,20 @@ where
         assert!(EF::DIMENSION <= RATE);
         Self {
             challenger: DuplexChallenger::new(permutation),
-            transcript: Vec::new(),
-            n_zeros: 0,
-            _extension_field: std::marker::PhantomData,
+            transcript: Proof(Vec::new()),
         }
     }
 
-    pub fn proof_size_fe(&self) -> usize {
-        self.transcript.len() - self.n_zeros
+    pub fn raw_proof(&self) -> Vec<PF<EF>> {
+        self.transcript.raw_proof()
     }
 
-    pub fn proof(&self) -> &[PF<EF>] {
-        &self.transcript
+    pub fn pruned_proof(&self) -> PrunedProof<PF<EF>> {
+        self.transcript.clone().prune()
     }
 
-    pub fn into_proof(self) -> Vec<PF<EF>> {
-        self.transcript
+    pub fn into_pruned_proof(self) -> PrunedProof<PF<EF>> {
+        self.transcript.prune()
     }
 }
 
@@ -74,10 +70,9 @@ where
     PF<EF>: PrimeField64,
 {
     fn add_base_scalars(&mut self, scalars: &[PF<EF>]) {
-        let padding = scalars.len().next_multiple_of(RATE) - scalars.len();
-        self.transcript.extend_from_slice(scalars);
-        self.transcript.extend(repeat_n(PF::<EF>::ZERO, padding));
-        self.n_zeros += padding;
+        self.transcript
+            .0
+            .push(TranscriptData::Interraction(scalars.to_vec()));
         for chunk in scalars.chunks(RATE) {
             let mut buffer = [PF::<EF>::ZERO; RATE];
             for (i, val) in chunk.iter().enumerate() {
@@ -91,8 +86,8 @@ where
         format!("{:?}", self.challenger.sponge_state)
     }
 
-    fn hint_base_scalars(&mut self, scalars: &[PF<EF>]) {
-        self.transcript.extend(scalars);
+    fn hint_merkle_paths_base(&mut self, paths: Vec<MerklePath<PF<EF>, PF<EF>>>) {
+        self.transcript.0.push(TranscriptData::MerklePaths(MerklePaths(paths)));
     }
 
     fn pow_grinding(&mut self, bits: usize) {
@@ -148,6 +143,8 @@ where
             value
         });
         assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
-        self.transcript.push(witness_found);
+        self.transcript
+            .0
+            .push(TranscriptData::GrindingWitness(witness_found));
     }
 }

@@ -14,3 +14,9 @@ mod duplex_challenger;
 
 mod traits;
 pub use traits::*;
+
+mod transcript;
+pub use transcript::*;
+
+mod merkle_pruning;
+pub(crate) use merkle_pruning::*;

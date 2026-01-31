@@ -1,6 +1,6 @@
 use p3_field::ExtensionField;
 
-use crate::{PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
+use crate::{MerklePath, PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
 
 pub trait ChallengeSampler<EF> {
     fn duplexing(&mut self); // never sample twice without duplexing in between
@@ -23,7 +23,7 @@ pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     fn state(&self) -> String;
     fn add_base_scalars(&mut self, scalars: &[PF<EF>]);
     fn pow_grinding(&mut self, bits: usize);
-    fn hint_base_scalars(&mut self, scalars: &[PF<EF>]);
+    fn hint_merkle_paths_base(&mut self, paths: Vec<MerklePath<PF<EF>, PF<EF>>>);
 
     fn add_extension_scalars(&mut self, scalars: &[EF]) {
         self.add_base_scalars(&flatten_scalars_to_base(scalars));
@@ -33,8 +33,14 @@ pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
         self.add_extension_scalars(&[scalar]);
     }
 
-    fn hint_extension_scalars(&mut self, scalars: &[EF]) {
-        self.hint_base_scalars(&flatten_scalars_to_base(scalars));
+    fn hint_merkle_paths_extension(&mut self, paths: Vec<MerklePath<EF, PF<EF>>>) {
+        self.hint_merkle_paths_base(paths.into_iter().map(|path| {
+            MerklePath {
+                leaf_data: flatten_scalars_to_base(&path.leaf_data),
+                sibling_hashes: path.sibling_hashes,
+                leaf_index: path.leaf_index,
+            }
+        }).collect());
     }
 }
 
