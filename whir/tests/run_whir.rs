@@ -14,11 +14,12 @@ use whir::*;
 // Commit A in F, B in EF
 // TODO there is a big overhead embedding overhead in the sumcheck
 
+type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
 #[test]
 fn run_whir_base() {
-    run_whir::<KoalaBear>();
+    run_whir::<F>();
 }
 
 #[test]
@@ -26,9 +27,9 @@ fn run_whir_extension() {
     run_whir::<EF>();
 }
 
-fn run_whir<BaseField: ExtensionField<KoalaBear>>()
+fn run_whir<PolField: ExtensionField<F> + TwoAdicField>()
 where
-    EF: ExtensionField<BaseField>,
+    EF: ExtensionField<PolField>,
 {
     let env_filter: EnvFilter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
@@ -41,18 +42,16 @@ where
 
     let poseidon16 = default_koalabear_poseidon2_16();
 
-    type PolField = EF;
-
-    let num_variables = 20;
+    let num_variables = 17;
     let num_coeffs = 1 << num_variables;
 
     let params = WhirConfigBuilder {
         security_level: 123,
         max_num_variables_to_send_coeffs: 6,
-        pow_bits: 17,
+        pow_bits: 16,
         folding_factor: FoldingFactor::new(4, 4),
         soundness_type: SecurityAssumption::JohnsonBound,
-        starting_log_inv_rate: 2,
+        starting_log_inv_rate: 3,
         rs_domain_initial_reduction_factor: 1,
     };
     let params = WhirConfig::new(&params, num_variables);
@@ -62,9 +61,17 @@ where
     }
 
     let mut rng = StdRng::seed_from_u64(0);
-    let polynomial = (0..num_coeffs)
-        .map(|_| rng.random())
-        .collect::<Vec<PolField>>();
+    let polynomial = if TypeId::of::<PolField>() == TypeId::of::<EF>() {
+        let coeffs = (0..num_coeffs)
+            .map(|_| rng.random::<EF>())
+            .collect::<Vec<EF>>();
+        unsafe { std::mem::transmute::<Vec<EF>, Vec<PolField>>(coeffs) }
+    } else {
+        let coeffs = (0..num_coeffs)
+            .map(|_| rng.random::<F>())
+            .collect::<Vec<F>>();
+        unsafe { std::mem::transmute::<Vec<F>, Vec<PolField>>(coeffs) }
+    };
 
     let random_sparse_point = |rng: &mut StdRng, num_variables: usize| {
         let selector_len = rng.random_range(0..num_variables / 2);
@@ -107,7 +114,7 @@ where
 
     let mut prover_state = ProverState::new(poseidon16.clone());
 
-    precompute_dft_twiddles::<KoalaBear>(1 << KoalaBear::TWO_ADICITY);
+    precompute_dft_twiddles::<F>(1 << F::TWO_ADICITY);
 
     let polynomial: MleOwned<EF> = if TypeId::of::<PolField>() == TypeId::of::<EF>() {
         MleOwned::Extension(unsafe { std::mem::transmute(polynomial) })
@@ -130,7 +137,7 @@ where
     let pruned_proof = prover_state.into_pruned_proof();
     let opening_time_single = time.elapsed();
 
-    let proof_size_single = pruned_proof.proof_size_fe() as f64 * KoalaBear::bits() as f64 / 8.0;
+    let proof_size_single = pruned_proof.proof_size_fe() as f64 * F::bits() as f64 / 8.0;
 
     let transcript = pruned_proof.restore().unwrap().raw_proof();
     let mut verifier_state = VerifierState::new(transcript, poseidon16.clone());
