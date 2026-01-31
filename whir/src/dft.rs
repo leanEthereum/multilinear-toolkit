@@ -28,8 +28,8 @@ use p3_matrix::{
     Matrix,
     dense::{RowMajorMatrix, RowMajorMatrixViewMut},
 };
-use rayon::prelude::*;
 use p3_util::{as_base_slice, log2_strict_usize};
+use rayon::prelude::*;
 
 /// The number of layers to compute in each parallelization.
 const LAYERS_PER_GROUP: usize = 3;

@@ -46,7 +46,10 @@ impl<EF> SparseStatement<EF> {
         Self {
             total_num_variables,
             point: MultilinearPoint(vec![]),
-            values: vec![SparseValue { selector: index, value }],
+            values: vec![SparseValue {
+                selector: index,
+                value,
+            }],
         }
     }
 
@@ -73,8 +76,7 @@ pub struct SparseValue<EF> {
     pub value: EF,
 }
 
-
-impl <EF> SparseValue<EF> {
+impl<EF> SparseValue<EF> {
     pub fn new(selector: usize, value: EF) -> Self {
         Self { selector, value }
     }

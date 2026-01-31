@@ -433,7 +433,7 @@ where
                 for e in &smt.values {
                     let eval = (0..smt.selector_num_variables())
                         .map(|j| {
-                            if e.selector & (1 << (smt.selector_num_variables() - 1 -j)) == 0 {
+                            if e.selector & (1 << (smt.selector_num_variables() - 1 - j)) == 0 {
                                 EF::ONE - point[j]
                             } else {
                                 point[j]

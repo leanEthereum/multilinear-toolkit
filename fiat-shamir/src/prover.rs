@@ -87,7 +87,9 @@ where
     }
 
     fn hint_merkle_paths_base(&mut self, paths: Vec<MerklePath<PF<EF>, PF<EF>>>) {
-        self.transcript.0.push(TranscriptData::MerklePaths(MerklePaths(paths)));
+        self.transcript
+            .0
+            .push(TranscriptData::MerklePaths(MerklePaths(paths)));
     }
 
     fn pow_grinding(&mut self, bits: usize) {

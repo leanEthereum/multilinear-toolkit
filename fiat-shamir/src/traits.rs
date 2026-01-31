@@ -34,13 +34,16 @@ pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     }
 
     fn hint_merkle_paths_extension(&mut self, paths: Vec<MerklePath<EF, PF<EF>>>) {
-        self.hint_merkle_paths_base(paths.into_iter().map(|path| {
-            MerklePath {
-                leaf_data: flatten_scalars_to_base(&path.leaf_data),
-                sibling_hashes: path.sibling_hashes,
-                leaf_index: path.leaf_index,
-            }
-        }).collect());
+        self.hint_merkle_paths_base(
+            paths
+                .into_iter()
+                .map(|path| MerklePath {
+                    leaf_data: flatten_scalars_to_base(&path.leaf_data),
+                    sibling_hashes: path.sibling_hashes,
+                    leaf_index: path.leaf_index,
+                })
+                .collect(),
+        );
     }
 }
 
