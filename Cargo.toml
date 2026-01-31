@@ -23,6 +23,8 @@ p3-poseidon2 = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "
 p3-merkle-tree = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 p3-dft = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
 p3-commit = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig" }
+p3-maybe-rayon = { git = "https://github.com/TomWambsgans/Plonky3.git", branch = "lean-multisig", features = [
+"parallel"] }
 
 rayon = "*"
 rand = "*"
