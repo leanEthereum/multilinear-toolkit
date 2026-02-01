@@ -1,8 +1,7 @@
 use crate::*;
 use crate::{EFPacking, PF};
 use itertools::Itertools;
-use p3_field::{ExtensionField, Field, PrimeCharacteristicRing, dot_product};
-use p3_util::log2_strict_usize;
+use p3_field::{ExtensionField, Field, PrimeCharacteristicRing};
 use rayon::{join, prelude::*};
 use std::borrow::Borrow;
 
@@ -315,74 +314,6 @@ where
     }
 }
 
-/// poly is a multivariate polynomial, of degree `univariate_skips` in the first variable, and
-/// multilinear in the rest. `selectors` are the 2^univariate_skips univariate polynomials,
-/// of degree `univariate_skips - 1`, such that the i-th one Pi is defined by:
-/// Pi(j) = 1 if i == j else 0 for j in 0..2^univariate_skips.
-pub fn evaluate_univariate_multilinear<
-    F: Field,
-    NF: ExtensionField<F>,
-    EF: ExtensionField<F> + ExtensionField<NF> + ExtensionField<PF<EF>>,
-    const PARALLEL: bool,
->(
-    poly: &[NF],
-    point: &[EF],
-    selectors: &[DensePolynomial<F>],
-    eq_poly: Option<&[EF]>,
-) -> EF {
-    let univariate_skips = log2_strict_usize(selectors.len());
-    assert_eq!(poly.len(), 1 << (point.len() + univariate_skips - 1));
-    let eq_poly_owned = match eq_poly {
-        Some(_) => None,
-        None => Some(eval_eq(&point[1..])),
-    };
-    let eq_poly = eq_poly.unwrap_or_else(|| eq_poly_owned.as_ref().unwrap());
-    selectors
-        .iter()
-        .zip(poly.chunks_exact(1 << (point.len() - 1)))
-        .map(|(selector, chunk)| {
-            selector.evaluate(point[0])
-                * if PARALLEL {
-                    eq_poly
-                        .par_iter()
-                        .zip(chunk.par_iter())
-                        .map(|(&a, &b)| a * b)
-                        .sum::<EF>()
-                } else {
-                    dot_product(eq_poly.iter().copied(), chunk.iter().copied())
-                }
-        })
-        .sum()
-}
-
-pub fn batch_evaluate_univariate_multilinear<
-    F: Field,
-    NF: ExtensionField<F>,
-    EF: ExtensionField<F> + ExtensionField<NF> + ExtensionField<PF<EF>>,
->(
-    polys: &[&[NF]],
-    point: &[EF],
-    selectors: &[DensePolynomial<F>],
-) -> Vec<EF> {
-    let univariate_skips = log2_strict_usize(selectors.len());
-    assert!(
-        polys
-            .iter()
-            .all(|poly| poly.len() == 1 << (point.len() + univariate_skips - 1))
-    );
-    let eq_poly = eval_eq(&point[1..]);
-    polys
-        .par_iter() // TODO in case polys.len() is small, maybe use normal iter + parallelism inside
-        .map(|poly| {
-            evaluate_univariate_multilinear::<F, NF, EF, false>(
-                poly,
-                point,
-                selectors,
-                Some(&eq_poly),
-            )
-        })
-        .collect()
-}
 #[cfg(test)]
 mod tests {
     use std::time::Instant;

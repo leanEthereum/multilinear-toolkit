@@ -1,6 +1,4 @@
-use p3_field::{ExtensionField, Field};
-
-use crate::DensePolynomial;
+use p3_field::Field;
 
 pub fn mle_of_zeros_then_ones<F: Field>(n_zeros: usize, point: &[F]) -> F {
     let n_vars = point.len();
@@ -15,28 +13,9 @@ pub fn mle_of_zeros_then_ones<F: Field>(n_zeros: usize, point: &[F]) -> F {
     }
 }
 
-pub fn skipped_mle_of_zeros_then_ones<F: Field, EF: ExtensionField<F>>(
-    n_zeros: usize,
-    point: &[EF],
-    selectors: &[DensePolynomial<F>],
-) -> EF {
-    let n = 1 << (point.len() - 1);
-    assert!(n_zeros <= selectors.len() * n);
-    selectors
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            s.evaluate(point[0])
-                * mle_of_zeros_then_ones::<EF>(n_zeros.saturating_sub(i * n).min(n), &point[1..])
-        })
-        .sum()
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{
-        EvaluationsList, MultilinearPoint, evaluate_univariate_multilinear, univariate_selectors,
-    };
+    use crate::{EvaluationsList, MultilinearPoint};
     use p3_field::PrimeCharacteristicRing;
     use p3_koala_bear::KoalaBear;
     use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -58,29 +37,6 @@ mod tests {
                 assert_eq!(
                     mle_of_zeros_then_ones::<F>(n_zeros, &point),
                     slice.evaluate(&MultilinearPoint(point))
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_skipped_mle_of_zeros_then_ones() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let univariate_skips = 3;
-        let selectors = univariate_selectors(univariate_skips);
-        for n_vars in 5..10 {
-            for n_zeros in 0..=1 << (n_vars + univariate_skips - 1) {
-                let slice = [
-                    vec![F::ZERO; n_zeros],
-                    vec![F::ONE; (1 << (n_vars + univariate_skips - 1)) - n_zeros],
-                ]
-                .concat();
-                let point = (0..n_vars).map(|_| rng.random()).collect::<Vec<F>>();
-                assert_eq!(
-                    skipped_mle_of_zeros_then_ones::<F, F>(n_zeros, &point, &selectors),
-                    evaluate_univariate_multilinear::<_, _, _, false>(
-                        &slice, &point, &selectors, None
-                    )
                 );
             }
         }
