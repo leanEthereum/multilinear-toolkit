@@ -1,7 +1,7 @@
 use backend::{MleOwned, PF};
 use fiat_shamir::FSProver;
 use p3_field::{ExtensionField, TwoAdicField};
-use tracing::instrument;
+use tracing::{info_span, instrument};
 
 use crate::*;
 
@@ -61,11 +61,13 @@ where
         prover_state: &mut impl FSProver<EF>,
         polynomial: &MleOwned<EF>,
     ) -> Witness<EF> {
-        let folded_matrix = reorder_and_dft(
-            &polynomial.by_ref(),
-            self.folding_factor.at_round(0),
-            self.starting_log_inv_rate,
-        );
+        let folded_matrix = info_span!("FFT").in_scope(|| {
+            reorder_and_dft(
+                &polynomial.by_ref(),
+                self.folding_factor.at_round(0),
+                self.starting_log_inv_rate,
+            )
+        });
 
         let (prover_data, root) = MerkleData::build(folded_matrix);
 

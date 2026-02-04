@@ -1,8 +1,8 @@
-use std::{any::TypeId, time::Instant};
+use std::time::Instant;
 
 use backend::*;
 use fiat_shamir::{ProverState, VerifierState};
-use p3_field::{ExtensionField, Field, TwoAdicField};
+use p3_field::{Field, TwoAdicField};
 use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB, default_koalabear_poseidon2_16};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
@@ -13,28 +13,12 @@ type F = KoalaBear;
 type EF = QuinticExtensionFieldKB;
 
 /*
-RUSTFLAGS='-C target-cpu=native' cargo test --release --package whir --test run_whir -- test_run_whir --exact --nocapture 
+RUSTFLAGS='-C target-cpu=native' cargo test --release --package whir --test run_whir -- test_run_whir --exact --nocapture
 */
 
 #[test]
 fn test_run_whir() {
-    println!("BASE FIELD");
-    run_whir::<F>(25, 7, 2, 5, false);
-
-    println!("\nEXTENSION FIELD");
-    run_whir::<EF>(17, 4, 3, 1, false);
-}
-
-fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
-    num_variables: usize,
-    first_folding_factor: usize,
-    starting_log_inv_rate: usize,
-    rs_domain_initial_reduction_factor: usize,
-    tracing: bool,
-) where
-    EF: ExtensionField<PolField>,
-{
-    if tracing {
+    if true {
         let env_filter: EnvFilter = EnvFilter::builder()
             .with_default_directive(LevelFilter::INFO.into())
             .from_env_lossy();
@@ -46,16 +30,17 @@ fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
     }
     let poseidon16 = default_koalabear_poseidon2_16();
 
+    let num_variables = 25;
     let num_coeffs = 1 << num_variables;
 
     let params = WhirConfigBuilder {
         security_level: 123,
-        max_num_variables_to_send_coeffs: 6,
-        pow_bits: 16,
-        folding_factor: FoldingFactor::new(first_folding_factor, 4),
+        max_num_variables_to_send_coeffs: 9,
+        pow_bits: 18,
+        folding_factor: FoldingFactor::new(7, 4),
         soundness_type: SecurityAssumption::JohnsonBound,
-        starting_log_inv_rate,
-        rs_domain_initial_reduction_factor,
+        starting_log_inv_rate: 2,
+        rs_domain_initial_reduction_factor: 5,
     };
     let params = WhirConfig::new(&params, num_variables);
 
@@ -64,17 +49,9 @@ fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
     }
 
     let mut rng = StdRng::seed_from_u64(0);
-    let polynomial = if TypeId::of::<PolField>() == TypeId::of::<EF>() {
-        let coeffs = (0..num_coeffs)
-            .map(|_| rng.random::<EF>())
-            .collect::<Vec<EF>>();
-        unsafe { std::mem::transmute::<Vec<EF>, Vec<PolField>>(coeffs) }
-    } else {
-        let coeffs = (0..num_coeffs)
-            .map(|_| rng.random::<F>())
-            .collect::<Vec<F>>();
-        unsafe { std::mem::transmute::<Vec<F>, Vec<PolField>>(coeffs) }
-    };
+    let polynomial = (0..num_coeffs)
+        .map(|_| rng.random::<F>())
+        .collect::<Vec<F>>();
 
     let random_sparse_point = |rng: &mut StdRng, num_variables: usize| {
         let selector_len = rng.random_range(0..num_variables / 2);
@@ -119,11 +96,7 @@ fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
 
     precompute_dft_twiddles::<F>(1 << F::TWO_ADICITY);
 
-    let polynomial: MleOwned<EF> = if TypeId::of::<PolField>() == TypeId::of::<EF>() {
-        MleOwned::Extension(unsafe { std::mem::transmute(polynomial) })
-    } else {
-        MleOwned::Base(unsafe { std::mem::transmute(polynomial) })
-    };
+    let polynomial: MleOwned<EF> = MleOwned::Base(polynomial);
 
     let time = Instant::now();
     let witness = params.commit(&mut prover_state, &polynomial);
@@ -145,19 +118,17 @@ fn run_whir<PolField: ExtensionField<F> + TwoAdicField>(
     let transcript = pruned_proof.restore().unwrap().raw_proof();
     let mut verifier_state = VerifierState::new(transcript, poseidon16.clone());
 
-    let parsed_commitment = params
-        .parse_commitment::<PolField>(&mut verifier_state)
-        .unwrap();
+    let parsed_commitment = params.parse_commitment::<F>(&mut verifier_state).unwrap();
 
     params
-        .verify::<PolField>(&mut verifier_state, &parsed_commitment, statement.clone())
+        .verify::<F>(&mut verifier_state, &parsed_commitment, statement.clone())
         .unwrap();
 
     println!(
-        "\nProving time: {} ms (commit: {} ms, opening: {} ms)",
+        "\nProving time: {} ms (commit: {} ms, opening: {} ms), proof size: {:.2} KiB",
         commit_time.as_millis() + opening_time_single.as_millis(),
         commit_time.as_millis(),
-        opening_time_single.as_millis()
+        opening_time_single.as_millis(),
+        proof_size_single / 1024.0
     );
-    println!("proof size: {:.2} KiB", proof_size_single / 1024.0);
 }
