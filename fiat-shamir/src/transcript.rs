@@ -43,6 +43,7 @@ impl<F: Field> Proof<F> {
                 }
                 TranscriptData::GrindingWitness(scalar) => {
                     proof.push(scalar.clone());
+                    proof.extend(repeat_n(F::ZERO, RATE - 1));
                 }
                 TranscriptData::MerklePaths(paths) => {
                     for path in &paths.0 {

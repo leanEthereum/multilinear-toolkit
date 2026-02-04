@@ -90,12 +90,18 @@ where
             return Ok(());
         }
 
-        if self.index + 1 > self.transcript.len() {
+        if self.index + RATE > self.transcript.len() {
             return Err(ProofError::ExceededTranscript);
         }
 
         let witness = self.transcript[self.index];
-        self.index += 1;
+        if self.transcript[self.index + 1..self.index + RATE]
+            .iter()
+            .any(|&x| x != PF::<EF>::ZERO)
+        {
+            return Err(ProofError::InvalidPadding);
+        }
+        self.index += RATE;
 
         self.challenger.observe({
             let mut value = [PF::<EF>::ZERO; RATE];
