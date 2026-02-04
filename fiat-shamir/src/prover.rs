@@ -49,7 +49,11 @@ where
     PF<EF>: PrimeField64,
 {
     fn sample_vec(&mut self, len: usize) -> Vec<EF> {
-        sample_vec(&mut self.challenger, len)
+        let mut res = Vec::new();
+        for chunk in self.challenger.sample_many(len) {
+            res.push(EF::from_basis_coefficients_slice(&chunk[..EF::DIMENSION]).unwrap());
+        }
+        res
     }
 
     fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
