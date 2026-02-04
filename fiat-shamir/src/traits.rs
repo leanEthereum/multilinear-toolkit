@@ -3,20 +3,11 @@ use p3_field::ExtensionField;
 use crate::{MerklePath, PF, ProofError, flatten_scalars_to_base, pack_scalars_to_extension};
 
 pub trait ChallengeSampler<EF> {
-    fn duplexing(&mut self); // never sample twice without duplexing in between
-    fn sample(&mut self) -> EF;
-    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize>;
-
-    fn sample_vec(&mut self, len: usize) -> Vec<EF> {
-        let mut samples = Vec::with_capacity(len);
-        for i in 0..len {
-            samples.push(self.sample());
-            if i + 1 < len {
-                self.duplexing();
-            }
-        }
-        samples
+    fn sample_vec(&mut self, len: usize) -> Vec<EF>;
+    fn sample(&mut self) -> EF {
+        self.sample_vec(1).pop().unwrap()
     }
+    fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize>;
 }
 
 pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
@@ -53,18 +44,10 @@ pub trait FSVerifier<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     fn receive_hint_base_scalars(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError>;
     fn check_pow_grinding(&mut self, bits: usize) -> Result<(), ProofError>;
 
-    fn next_base_scalars_const<const N: usize>(&mut self) -> Result<[PF<EF>; N], ProofError> {
-        Ok(self.next_base_scalars_vec(N)?.try_into().unwrap())
-    }
-
     fn next_extension_scalars_vec(&mut self, n: usize) -> Result<Vec<EF>, ProofError> {
         Ok(pack_scalars_to_extension(
             &self.next_base_scalars_vec(n * EF::DIMENSION)?,
         ))
-    }
-
-    fn next_extension_scalars_const<const N: usize>(&mut self) -> Result<[EF; N], ProofError> {
-        Ok(self.next_extension_scalars_vec(N)?.try_into().unwrap())
     }
 
     fn next_extension_scalar(&mut self) -> Result<EF, ProofError> {

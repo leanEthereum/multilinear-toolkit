@@ -1,5 +1,5 @@
 use crate::{
-    duplex_challenger::{DuplexChallenger, RATE, WIDTH},
+    challenger::{Challenger, RATE, WIDTH},
     *,
 };
 use p3_field::Field;
@@ -13,7 +13,7 @@ use std::{fmt::Debug, sync::Mutex};
 
 #[derive(Debug)]
 pub struct ProverState<EF: ExtensionField<PF<EF>>, P> {
-    challenger: DuplexChallenger<PF<EF>, P>,
+    challenger: Challenger<PF<EF>, P>,
     transcript: Proof<PF<EF>>,
 }
 
@@ -25,7 +25,7 @@ where
     pub fn new(permutation: P) -> Self {
         assert!(EF::DIMENSION <= RATE);
         Self {
-            challenger: DuplexChallenger::new(permutation),
+            challenger: Challenger::new(permutation),
             transcript: Proof(Vec::new()),
         }
     }
@@ -48,12 +48,8 @@ impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> C
 where
     PF<EF>: PrimeField64,
 {
-    fn duplexing(&mut self) {
-        self.challenger.duplexing(None);
-    }
-
-    fn sample(&mut self) -> EF {
-        EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
+    fn sample_vec(&mut self, len: usize) -> Vec<EF> {
+        sample_vec(&mut self.challenger, len)
     }
 
     fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
@@ -83,7 +79,7 @@ where
     }
 
     fn state(&self) -> String {
-        format!("{:?}", self.challenger.sponge_state)
+        format!("{:?}", self.challenger.state)
     }
 
     fn hint_merkle_paths_base(&mut self, paths: Vec<MerklePath<PF<EF>, PF<EF>>>) {
@@ -117,11 +113,11 @@ where
                 });
 
                 let mut packed_state = [Packed::<EF>::ZERO; WIDTH];
-                packed_state[0] = packed_witnesses;
-                packed_state[RATE..]
+                packed_state[..RATE]
                     .iter_mut()
-                    .zip(&self.challenger.sponge_state[RATE..])
+                    .zip(&self.challenger.state)
                     .for_each(|(val, state)| *val = Packed::<EF>::from(*state));
+                packed_state[RATE] = packed_witnesses;
 
                 self.challenger.permutation.permute_mut(&mut packed_state);
 
@@ -144,7 +140,7 @@ where
             value[0] = witness_found;
             value
         });
-        assert!(self.challenger.sample_in_range(bits, 1)[0] == 0);
+        assert!(self.challenger.state[0].as_canonical_u64() & ((1 << bits) - 1) == 0);
         self.transcript
             .0
             .push(TranscriptData::GrindingWitness(witness_found));

@@ -10,7 +10,7 @@ pub use verifier::*;
 mod utils;
 pub use utils::*;
 
-mod duplex_challenger;
+mod challenger;
 
 mod traits;
 pub use traits::*;

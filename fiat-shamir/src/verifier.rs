@@ -1,5 +1,5 @@
 use crate::{
-    duplex_challenger::{DuplexChallenger, RATE, WIDTH},
+    challenger::{Challenger, RATE, WIDTH},
     *,
 };
 use p3_field::PrimeCharacteristicRing;
@@ -8,7 +8,7 @@ use p3_symmetric::CryptographicPermutation;
 
 #[derive(Debug)]
 pub struct VerifierState<EF: ExtensionField<PF<EF>>, P> {
-    challenger: DuplexChallenger<PF<EF>, P>,
+    challenger: Challenger<PF<EF>, P>,
     transcript: Vec<PF<EF>>,
     index: usize,
     _extension_field: std::marker::PhantomData<EF>,
@@ -22,7 +22,7 @@ where
     pub fn new(transcript: Vec<PF<EF>>, permutation: P) -> Self {
         assert!(EF::DIMENSION <= RATE);
         Self {
-            challenger: DuplexChallenger::new(permutation),
+            challenger: Challenger::new(permutation),
             transcript,
             index: 0,
             _extension_field: std::marker::PhantomData,
@@ -35,14 +35,9 @@ impl<EF: ExtensionField<PF<EF>>, P: CryptographicPermutation<[PF<EF>; WIDTH]>> C
 where
     PF<EF>: PrimeField64,
 {
-    fn duplexing(&mut self) {
-        self.challenger.duplexing(None);
+    fn sample_vec(&mut self, len: usize) -> Vec<EF> {
+        sample_vec(&mut self.challenger, len)
     }
-
-    fn sample(&mut self) -> EF {
-        EF::from_basis_coefficients_slice(&self.challenger.sample()[..EF::DIMENSION]).unwrap()
-    }
-
     fn sample_in_range(&mut self, bits: usize, n_samples: usize) -> Vec<usize> {
         self.challenger.sample_in_range(bits, n_samples)
     }
@@ -54,7 +49,7 @@ where
     PF<EF>: PrimeField64,
 {
     fn state(&self) -> String {
-        format!("{:?}", self.challenger.sponge_state)
+        format!("{:?}", self.challenger.state)
     }
 
     fn next_base_scalars_vec(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError> {
@@ -95,19 +90,25 @@ where
             return Ok(());
         }
 
-        if self.index + 1 > self.transcript.len() {
+        if self.index + RATE > self.transcript.len() {
             return Err(ProofError::ExceededTranscript);
         }
 
         let witness = self.transcript[self.index];
-        self.index += 1;
+        if self.transcript[self.index + 1..self.index + RATE]
+            .iter()
+            .any(|&x| x != PF::<EF>::ZERO)
+        {
+            return Err(ProofError::InvalidPadding);
+        }
+        self.index += RATE;
 
         self.challenger.observe({
             let mut value = [PF::<EF>::ZERO; RATE];
             value[0] = witness;
             value
         });
-        if self.challenger.sample_in_range(bits, 1)[0] != 0 {
+        if self.challenger.state[0].as_canonical_u64() & ((1 << bits) - 1) != 0 {
             return Err(ProofError::InvalidGrindingWitness);
         }
         Ok(())

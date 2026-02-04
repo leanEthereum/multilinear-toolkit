@@ -6,7 +6,7 @@ use p3_symmetric::{
     CryptographicHasher, PaddingFreeSponge, PseudoCompressionFunction, TruncatedPermutation,
 };
 
-use crate::{PrunedMerklePaths, duplex_challenger::RATE};
+use crate::{PrunedMerklePaths, challenger::RATE};
 
 pub(crate) const DIGEST_LEN_FE: usize = 8;
 
@@ -43,6 +43,7 @@ impl<F: Field> Proof<F> {
                 }
                 TranscriptData::GrindingWitness(scalar) => {
                     proof.push(scalar.clone());
+                    proof.extend(repeat_n(F::ZERO, RATE - 1));
                 }
                 TranscriptData::MerklePaths(paths) => {
                     for path in &paths.0 {
