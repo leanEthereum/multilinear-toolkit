@@ -6,7 +6,7 @@ use p3_symmetric::{
     CryptographicHasher, PaddingFreeSponge, PseudoCompressionFunction, TruncatedPermutation,
 };
 
-use crate::{PrunedMerklePaths, duplex_challenger::RATE};
+use crate::{PrunedMerklePaths, challenger::RATE};
 
 pub(crate) const DIGEST_LEN_FE: usize = 8;
 

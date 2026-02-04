@@ -1,4 +1,7 @@
-use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing};
+use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing, PrimeField64};
+use p3_symmetric::CryptographicPermutation;
+
+use crate::challenger::{Challenger, RATE, WIDTH};
 
 pub(crate) type PF<F> = <F as PrimeCharacteristicRing>::PrimeSubfield;
 
@@ -20,4 +23,25 @@ pub fn pack_scalars_to_extension<F: Field, EF: ExtensionField<F>>(scalars: &[F])
         .chunks_exact(extension_size)
         .map(|chunk| EF::from_basis_coefficients_slice(chunk).unwrap())
         .collect()
+}
+
+pub(crate) fn sample_vec<
+    F: PrimeField64,
+    EF: ExtensionField<F>,
+    P: CryptographicPermutation<[F; WIDTH]>,
+>(
+    challenger: &mut Challenger<F, P>,
+    len: usize,
+) -> Vec<EF> {
+    let sampled_fe = challenger
+        .sample_many((len * EF::DIMENSION).div_ceil(RATE))
+        .into_iter()
+        .flatten()
+        .take(len * EF::DIMENSION)
+        .collect::<Vec<F>>();
+    let mut res = Vec::new();
+    for chunk in sampled_fe.chunks(EF::DIMENSION) {
+        res.push(EF::from_basis_coefficients_slice(chunk).unwrap());
+    }
+    res
 }

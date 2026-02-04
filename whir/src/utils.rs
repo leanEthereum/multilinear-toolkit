@@ -34,15 +34,12 @@ where
     E: Fn(&MultilinearPoint<EF>) -> EF,
     EF: ExtensionField<PF<EF>>,
 {
-    let mut ood_points = EF::zero_vec(num_samples);
-    let mut ood_answers = Vec::with_capacity(num_samples);
+    let mut ood_points = Vec::new();
+    let mut ood_answers = Vec::new();
 
     if num_samples > 0 {
         // Generate OOD points from ProverState randomness
-        for ood_point in &mut ood_points {
-            *ood_point = prover_state.sample();
-            prover_state.duplexing();
-        }
+        ood_points = prover_state.sample_vec(num_samples);
 
         // Evaluate the function at each OOD point
         ood_answers.extend(ood_points.iter().map(|ood_point| {

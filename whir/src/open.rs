@@ -61,7 +61,6 @@ where
             self.round(round, prover_state, &mut round_state).unwrap();
         }
 
-        prover_state.duplexing();
 
         MultilinearPoint(round_state.randomness_vec)
     }

@@ -28,15 +28,12 @@ impl<F: Field, EF: ExtensionField<F>> ParsedCommitment<F, EF> {
         EF: ExtensionField<PF<EF>>,
     {
         let root = verifier_state
-            .next_base_scalars_const::<DIGEST_ELEMS>()?
-            .into();
-        let mut ood_points = EF::zero_vec(ood_samples);
+            .next_base_scalars_vec(DIGEST_ELEMS)?
+            .try_into()
+            .unwrap();
+        let mut ood_points = vec![];
         let ood_answers = if ood_samples > 0 {
-            for ood_point in &mut ood_points {
-                *ood_point = verifier_state.sample();
-                verifier_state.duplexing();
-            }
-
+            ood_points = verifier_state.sample_vec(ood_samples);
             verifier_state.next_extension_scalars_vec(ood_samples)?
         } else {
             Vec::new()
@@ -218,8 +215,6 @@ where
         if claimed_sum != evaluation_of_weights * final_value {
             panic!();
         }
-
-        verifier_state.duplexing();
 
         Ok(folding_randomness)
     }
@@ -477,9 +472,7 @@ where
 
     for _ in 0..rounds {
         // Extract the 3 evaluations of the quadratic sumcheck polynomial h(X)
-        let coeffs: [_; 3] = verifier_state.next_extension_scalars_const()?;
-
-        let poly = DensePolynomial::new(coeffs.to_vec());
+        let poly = DensePolynomial::new(verifier_state.next_extension_scalars_vec(3)?);
 
         // Verify claimed sum is consistent with polynomial
         if poly.evaluate(EF::ZERO) + poly.evaluate(EF::ONE) != *claimed_sum {
