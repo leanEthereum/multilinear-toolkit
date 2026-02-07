@@ -3,14 +3,14 @@ use std::time::Instant;
 use backend::*;
 use fiat_shamir::{ProverState, VerifierState};
 use p3_field::{Field, TwoAdicField};
-use p3_koala_bear::{KoalaBear, QuinticExtensionFieldKB, default_koalabear_poseidon2_16};
+use p3_koala_bear::{KoalaBear, SexticExtensionFieldKB, default_koalabear_poseidon2_16};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use tracing_forest::{ForestLayer, util::LevelFilter};
 use tracing_subscriber::{EnvFilter, Registry, layer::SubscriberExt, util::SubscriberInitExt};
 use whir::*;
 
 type F = KoalaBear;
-type EF = QuinticExtensionFieldKB;
+type EF = SexticExtensionFieldKB;
 
 /*
 RUSTFLAGS='-C target-cpu=native' cargo test --release --package whir --test run_whir -- test_run_whir --exact --nocapture
