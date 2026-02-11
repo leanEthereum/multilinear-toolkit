@@ -40,6 +40,7 @@ pub trait FSProver<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
 
 pub trait FSVerifier<EF: ExtensionField<PF<EF>>>: ChallengeSampler<EF> {
     fn state(&self) -> String;
+    fn transcript(&self) -> Vec<PF<EF>>;
     fn next_base_scalars_vec(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError>;
     fn receive_hint_base_scalars(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError>;
     fn check_pow_grinding(&mut self, bits: usize) -> Result<(), ProofError>;

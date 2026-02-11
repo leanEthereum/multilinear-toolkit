@@ -49,7 +49,20 @@ where
     PF<EF>: PrimeField64,
 {
     fn state(&self) -> String {
-        format!("{:?}", self.challenger.state)
+        format!(
+            "state {} (len: {})",
+            self.challenger
+                .state
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.index
+        )
+    }
+
+    fn transcript(&self) -> Vec<PF<EF>> {
+        self.transcript.clone()
     }
 
     fn next_base_scalars_vec(&mut self, n: usize) -> Result<Vec<PF<EF>>, ProofError> {

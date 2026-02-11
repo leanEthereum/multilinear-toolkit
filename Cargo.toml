@@ -27,7 +27,7 @@ p3-maybe-rayon = { git = "https://github.com/TomWambsgans/Plonky3.git", branch =
 "parallel"] }
 
 rayon = "*"
-rand = "*"
+rand = "0.9.2"
 itertools = "*"
 tracing = "*"
 serde  = { version = "1.0.227", features = ["derive"] }

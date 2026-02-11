@@ -79,7 +79,16 @@ where
     }
 
     fn state(&self) -> String {
-        format!("{:?}", self.challenger.state)
+        format!(
+            "state: {} (len: {})",
+            self.challenger
+                .state
+                .iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.transcript.raw_proof().len()
+        )
     }
 
     fn hint_merkle_paths_base(&mut self, paths: Vec<MerklePath<PF<EF>, PF<EF>>>) {
