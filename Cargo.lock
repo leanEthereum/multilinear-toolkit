@@ -34,6 +34,7 @@ dependencies = [
  "p3-util",
  "rand",
  "rayon",
+ "serde",
 ]
 
 [[package]]
