@@ -10,14 +10,14 @@ use crate::{PrunedMerklePaths, challenger::RATE};
 
 pub(crate) const DIGEST_LEN_FE: usize = 8;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TranscriptData<F, MerklePaths> {
     Interraction(Vec<F>),
     GrindingWitness(F),
     MerklePaths(MerklePaths),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MerklePath<Data, F> {
     pub leaf_data: Vec<Data>,
     pub sibling_hashes: Vec<[F; DIGEST_LEN_FE]>,
@@ -25,10 +25,10 @@ pub struct MerklePath<Data, F> {
     pub leaf_index: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MerklePaths<Data, F>(pub(crate) Vec<MerklePath<Data, F>>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Proof<F>(pub(crate) Vec<TranscriptData<F, MerklePaths<F, F>>>);
 
 impl<F: Field> Proof<F> {
@@ -78,7 +78,7 @@ impl<F: Field> Proof<F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrunedProof<F>(pub(crate) Vec<TranscriptData<F, PrunedMerklePaths<F, F>>>);
 
 impl<F: Field> PrunedProof<F> {
